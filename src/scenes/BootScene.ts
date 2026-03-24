@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { generateSprites } from '../sprites/SpriteGenerator';
+import { createCommanderAnimations } from '../sprites/CommanderAnimations';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -41,12 +42,27 @@ export class BootScene extends Phaser.Scene {
     // ── Generate all sprite textures at runtime ────────────────
     generateSprites(this);
 
+    // ── Commander sprite sheet ─────────────────────────────────
+    this.load.spritesheet('commander-sheet', 'assets/sprites/commander_sprite_sheet.png', {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
+
     // ── Asset loading (placeholder) ────────────────────────────
     // Additional external assets (tilemaps, audio, etc.) will be
     // loaded here once available.
   }
 
   create(): void {
+    // Register commander directional animations from the sprite sheet
+    try {
+      if (this.textures.exists('commander-sheet')) {
+        createCommanderAnimations(this);
+      }
+    } catch (e) {
+      console.warn('Commander animations failed, using fallback:', e);
+    }
+
     this.scene.start('GameScene');
   }
 }

@@ -1,13 +1,20 @@
 import Phaser from 'phaser';
 import { TILE_SIZE, CHUNK_SIZE, WEAPONS } from '../config/GameConfig';
+import { BUILDINGS, UNITS } from '../config/BuildingConfig';
 import { Commander } from '../entities/Commander';
 import { Enemy } from '../entities/Enemy';
 import { Rover } from '../entities/Rover';
+import { Building } from '../entities/Building';
 import { WorldGenerator } from '../systems/WorldGenerator';
 import { WeaponSystem } from '../systems/WeaponSystem';
 import { EnemySpawner } from '../systems/EnemySpawner';
 import { VehicleManager } from '../systems/VehicleManager';
+import { BuildingManager } from '../systems/BuildingManager';
+import { ResourceManager } from '../systems/ResourceManager';
+import { UnitManager } from '../systems/UnitManager';
+import { TrainingQueue } from '../systems/TrainingQueue';
 import { HUD } from '../ui/HUD';
+import { ColonyHUD } from '../ui/ColonyHUD';
 
 // Spawn point: center of a chunk cluster so terrain is guaranteed loaded
 const SPAWN_X = 50 * CHUNK_SIZE * TILE_SIZE * 0.5;
@@ -21,6 +28,13 @@ export class GameScene extends Phaser.Scene {
   vehicleManager!: VehicleManager;
   hud!: HUD;
 
+  // Phase 2 systems (public for console testing)
+  buildingManager!: BuildingManager;
+  resourceManager!: ResourceManager;
+  unitManager!: UnitManager;
+  trainingQueue!: TrainingQueue;
+  colonyHUD!: ColonyHUD;
+
   // Loot items on the ground
   lootGroup!: Phaser.Physics.Arcade.Group;
 
@@ -32,6 +46,9 @@ export class GameScene extends Phaser.Scene {
 
   // Score decay
   private lastActiveTime: number = 0;
+
+  // T key for training
+  private keyT!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -60,6 +77,12 @@ export class GameScene extends Phaser.Scene {
     this.vehicleManager.setCommander(this.commander);
     this.vehicleManager.spawnRoversNear(SPAWN_X, SPAWN_Y, 3, 400);
 
+    // ── Phase 2: Resource, Building, Unit, Training systems ──────
+    this.resourceManager = new ResourceManager();
+    this.buildingManager = new BuildingManager(this, this.resourceManager, this.world);
+    this.unitManager = new UnitManager(this);
+    this.trainingQueue = new TrainingQueue();
+
     // ── Loot group ───────────────────────────────────────────────
     this.lootGroup = this.physics.add.group({
       allowGravity: false,
@@ -87,15 +110,24 @@ export class GameScene extends Phaser.Scene {
     // ── Event listeners ──────────────────────────────────────────
     this.setupEvents();
 
-    // ── Launch HUD scene ─────────────────────────────────────────
+    // ── Launch HUD scenes ────────────────────────────────────────
     this.scene.launch('HUDScene');
     this.hud = this.scene.get('HUDScene') as HUD;
+
+    this.scene.launch('ColonyHUDScene');
+    this.colonyHUD = this.scene.get('ColonyHUDScene') as ColonyHUD;
+
+    // ── Place initial Command Center at spawn ────────────────────
+    this.buildingManager.placeCommandCenter(SPAWN_X, SPAWN_Y);
 
     // ── Initial world load ───────────────────────────────────────
     this.world.update(this.commander.x, this.commander.y);
 
     // ── Score timer ──────────────────────────────────────────────
     this.lastActiveTime = Date.now();
+
+    // ── T key for training marines ───────────────────────────────
+    this.keyT = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T);
 
     // Spawn a few initial enemies so the world isn't empty
     for (let i = 0; i < 5; i++) {
@@ -108,14 +140,19 @@ export class GameScene extends Phaser.Scene {
         type,
       );
     }
+
   }
 
   // ── Collision wiring ─────────────────────────────────────────
   private setupCollisions(): void {
     const collisionGroup = this.world.getCollisionGroup();
+    const buildingGroup = this.buildingManager.getBuildingGroup();
 
     // Commander vs world
     this.physics.add.collider(this.commander, collisionGroup);
+
+    // Commander vs buildings (block movement)
+    this.physics.add.collider(this.commander, buildingGroup);
 
     // Player bullets vs enemies
     this.physics.add.overlap(
@@ -153,9 +190,10 @@ export class GameScene extends Phaser.Scene {
       this,
     );
 
-    // Vehicles vs enemies (run-over)
+    // Vehicles vs enemies (run-over) and vs world/buildings
     for (const rover of this.vehicleManager.getVehicles()) {
       this.physics.add.collider(rover, collisionGroup);
+      this.physics.add.collider(rover, buildingGroup);
       this.physics.add.overlap(
         rover,
         this.enemySpawner.getEnemies(),
@@ -164,6 +202,24 @@ export class GameScene extends Phaser.Scene {
         this,
       );
     }
+
+    // Turret bullets vs enemies
+    this.physics.add.overlap(
+      this.buildingManager.getTurretBullets(),
+      this.enemySpawner.getEnemies(),
+      this.onTurretBulletHitEnemy as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      undefined,
+      this,
+    );
+
+    // Enemies vs buildings (deal damage to buildings)
+    this.physics.add.overlap(
+      this.enemySpawner.getEnemies(),
+      buildingGroup,
+      this.onEnemyHitBuilding as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      undefined,
+      this,
+    );
   }
 
   // ── Event listeners ──────────────────────────────────────────
@@ -198,6 +254,18 @@ export class GameScene extends Phaser.Scene {
         this.hud.showKillFeed(`${enemy.enemyType} eliminated +${enemy.xpReward} XP`);
       }
     });
+
+    // When a friendly unit fires a bullet, wire overlap with enemies
+    this.events.on('friendly-bullet-fired', (bullet: Phaser.Physics.Arcade.Sprite) => {
+      this.physics.add.overlap(bullet, this.enemySpawner.getEnemies(), (bulletObj, enemyObj) => {
+        const enemy = enemyObj as unknown as Enemy;
+        const b = bulletObj as Phaser.Physics.Arcade.Sprite;
+        if (enemy.active && enemy.state !== 'dead') {
+          enemy.takeDamage((b as any).damage || 12);
+          b.destroy();
+        }
+      });
+    });
   }
 
   // ── Collision handlers ───────────────────────────────────────
@@ -227,7 +295,7 @@ export class GameScene extends Phaser.Scene {
     (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
   }
 
-  private contactDamageCooldown = 0;
+  contactDamageCooldown = 0;
 
   private onEnemyTouchCommander(
     _commanderObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
@@ -267,11 +335,13 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'building_material':
         this.commander.addScore(30);
-        pickupText = 'Materials +30';
+        this.resourceManager.add('ore', 15);
+        pickupText = 'Materials +30 (+15 Ore)';
         break;
       case 'rare_mineral':
         this.commander.addScore(100);
-        pickupText = 'Rare Mineral +100';
+        this.resourceManager.add('energy', 10);
+        pickupText = 'Rare Mineral +100 (+10 Energy)';
         break;
       default:
         this.commander.addScore(10);
@@ -296,8 +366,177 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private onTurretBulletHitEnemy(
+    bulletObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    enemyObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+  ): void {
+    const bullet = bulletObj as Phaser.Physics.Arcade.Image;
+    const enemy = enemyObj as unknown as Enemy;
+
+    if (!bullet.active) return;
+    if (!enemy.active || enemy.state === 'dead') return;
+
+    const meta = bullet.getData('meta');
+    const dmg = meta?.damage ?? 10;
+    enemy.takeDamage(dmg);
+
+    bullet.setActive(false).setVisible(false);
+    (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
+  }
+
+  private enemyBuildingDamageCooldowns = new Map<string, number>();
+
+  private onEnemyHitBuilding(
+    enemyObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    buildingObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+  ): void {
+    const enemy = enemyObj as unknown as Enemy;
+    const building = buildingObj as unknown as Building;
+
+    if (!enemy.active || enemy.state === 'dead') return;
+    if (!building.active) return;
+
+    // Throttle building damage to once per second per enemy-building pair
+    const pairKey = `${enemy.x.toFixed(0)}_${enemy.y.toFixed(0)}_${building.x.toFixed(0)}_${building.y.toFixed(0)}`;
+    const now = this.time.now;
+    const lastHit = this.enemyBuildingDamageCooldowns.get(pairKey) ?? 0;
+
+    if (now - lastHit < 1000) return;
+    this.enemyBuildingDamageCooldowns.set(pairKey, now);
+
+    building.takeDamage(enemy.damage);
+
+    if (this.colonyHUD && building.health <= 0) {
+      this.colonyHUD.showAlert(`Building Destroyed: ${building.buildingType}`);
+    } else if (this.colonyHUD && building.health < building.maxHealth * 0.5) {
+      this.colonyHUD.showAlert(`Building Under Attack!`);
+    }
+  }
+
+  // ── Training via T key ────────────────────────────────────────
+  private handleTrainingInput(): void {
+    if (!Phaser.Input.Keyboard.JustDown(this.keyT)) return;
+
+    // Find the nearest completed barracks
+    const barracks = this.buildingManager.getBuildings().find(
+      (b) => b.buildingType === 'barracks' && !b.isConstructing && b.active,
+    );
+
+    if (!barracks) {
+      if (this.colonyHUD) this.colonyHUD.showAlert('No Barracks available!');
+      return;
+    }
+
+    // Check cost
+    const marineDef = UNITS['marine'];
+    if (!marineDef) return;
+
+    if (!this.resourceManager.canAfford(marineDef.cost)) {
+      if (this.colonyHUD) this.colonyHUD.showAlert('Not enough resources for Marine');
+      return;
+    }
+
+    // Deduct cost and enqueue
+    this.resourceManager.spend(marineDef.cost);
+    const enqueued = this.trainingQueue.enqueue('marine', `barracks_${barracks.x}_${barracks.y}`);
+
+    if (!enqueued) {
+      // Refund if queue is full
+      this.resourceManager.add('ore', marineDef.cost.ore);
+      this.resourceManager.add('energy', marineDef.cost.energy);
+      if (this.colonyHUD) this.colonyHUD.showAlert('Training queue is full!');
+      return;
+    }
+
+    if (this.colonyHUD) this.colonyHUD.showAlert('Training Marine...');
+  }
+
+  // ── Process completed training ────────────────────────────────
+  private processTrainingQueue(delta: number): void {
+    const completed = this.trainingQueue.update(delta);
+
+    for (const unitType of completed) {
+      // Find a barracks to spawn the unit near
+      const barracks = this.buildingManager.getBuildings().find(
+        (b) => b.buildingType === 'barracks' && !b.isConstructing && b.active,
+      );
+
+      const spawnX = barracks ? barracks.x + Phaser.Math.Between(-40, 40) : this.commander.x + 50;
+      const spawnY = barracks ? barracks.y + Phaser.Math.Between(-40, 40) : this.commander.y + 50;
+
+      const unit = this.unitManager.spawnUnit(spawnX, spawnY, unitType);
+
+      if (unit && this.colonyHUD) {
+        this.colonyHUD.showAlert(`Training Complete: ${unitType}`);
+      } else if (!unit && this.colonyHUD) {
+        this.colonyHUD.showAlert('Unit cap reached!');
+      }
+    }
+  }
+
+  // ── Update ColonyHUD with build mode state ─────────────────────
+  private updateColonyHUD(): void {
+    if (!this.colonyHUD) return;
+
+    // Resources
+    this.colonyHUD.updateResources(
+      this.resourceManager.ore, this.resourceManager.maxOre, this.resourceManager.orePerMinute,
+      this.resourceManager.energy, this.resourceManager.maxEnergy, this.resourceManager.energyPerMinute,
+    );
+
+    // Unit count
+    this.colonyHUD.updateUnitCount(this.unitManager.getUnitCount(), this.unitManager.getMaxUnits());
+
+    // Training queue
+    this.colonyHUD.updateTrainingQueue(this.trainingQueue.getQueue());
+
+    // Build mode indicator + panel
+    const inBuildMode = this.buildingManager.isBuildModeActive();
+    this.colonyHUD.showBuildMode(inBuildMode);
+
+    if (inBuildMode) {
+      // Build the entries array for the build panel
+      const buildMenuOrder = ['barracks', 'refinery', 'solar_plant', 'turret', 'wall', 'command_center'];
+      const entries = buildMenuOrder.map((key) => {
+        const def = BUILDINGS[key];
+        return {
+          key,
+          name: def.name,
+          oreCost: def.cost.ore,
+          energyCost: def.cost.energy,
+          canAfford: this.resourceManager.canAfford(def.cost),
+        };
+      });
+
+      // Determine selected index
+      const selectedType = this.buildingManager.getSelectedBuildingType();
+      const selectedIndex = selectedType ? buildMenuOrder.indexOf(selectedType) : -1;
+      this.colonyHUD.selectBuildItem(selectedIndex);
+      this.colonyHUD.showBuildPanel(entries);
+
+      // Show tooltip for selected building
+      if (selectedType && BUILDINGS[selectedType]) {
+        const def = BUILDINGS[selectedType];
+        this.colonyHUD.showBuildingTooltip(
+          def.name,
+          def.description,
+          def.cost.ore,
+          def.cost.energy,
+          def.buildTime,
+        );
+      }
+    } else {
+      this.colonyHUD.hideBuildPanel();
+      this.colonyHUD.hideBuildingTooltip();
+    }
+  }
+
   // ── Main update loop ─────────────────────────────────────────
   update(time: number, delta: number): void {
+    this.gameUpdate(time, delta);
+  }
+
+  private gameUpdate(time: number, delta: number): void {
     // Contact damage cooldown
     if (this.contactDamageCooldown > 0) {
       this.contactDamageCooldown -= delta;
@@ -340,6 +579,14 @@ export class GameScene extends Phaser.Scene {
     this.weaponSystem.update();
     this.enemySpawner.update(time, delta, playerX, playerY);
     this.vehicleManager.update(time, delta);
+
+    // Phase 2 systems
+    this.buildingManager.update(time, delta, this.commander.x, this.commander.y, this.enemySpawner.getEnemies());
+    this.unitManager.update(time, delta, playerX, playerY, this.enemySpawner.getEnemies());
+
+    // Training queue
+    this.handleTrainingInput();
+    this.processTrainingQueue(delta);
 
     // ── Crosshair ────────────────────────────────────────────────
     const pointer = this.input.activePointer;
@@ -399,5 +646,8 @@ export class GameScene extends Phaser.Scene {
         { width: worldSize, height: worldSize },
       );
     }
+
+    // ── ColonyHUD updates ────────────────────────────────────────
+    this.updateColonyHUD();
   }
 }

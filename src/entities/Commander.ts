@@ -46,6 +46,12 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     THREE: Phaser.Input.Keyboard.Key;
   };
 
+  // ── Direction / Animation ──────────────────────────────────
+  /** Current facing direction — readable by other systems */
+  currentDirection: string = 'down';
+  private isShooting: boolean = false;
+  private aimAngle: number = 0;
+
   // ── Internal state ───────────────────────────────────────────
   private isDead: boolean = false;
   private spawnX: number;
@@ -53,7 +59,11 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
   private damageFlashTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, 'commander');
+    // Use the sprite sheet if available, fall back to programmatic texture
+    const textureKey = scene.textures.exists('commander-sheet')
+      ? 'commander-sheet'
+      : 'commander';
+    super(scene, x, y, textureKey);
 
     this.spawnX = x;
     this.spawnY = y;
@@ -79,6 +89,11 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
 
     this.setupInput();
     this.setupMouseInput();
+
+    // Start with idle-down animation if using sprite sheet
+    if (textureKey === 'commander-sheet') {
+      this.play('commander-idle-down');
+    }
   }
 
   // ── Input Binding ────────────────────────────────────────────
@@ -124,6 +139,7 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     this.handleMovement();
     this.handleWeaponSwitch();
     this.aimAtPointer();
+    this.updateAnimation();
   }
 
   // ── Movement ─────────────────────────────────────────────────
@@ -168,8 +184,76 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
   aimAtPointer(): void {
     const pointer = this.scene.input.activePointer;
     const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const angle = Phaser.Math.Angle.Between(this.x, this.y, worldPoint.x, worldPoint.y);
-    this.setRotation(angle);
+    this.aimAngle = Phaser.Math.Angle.Between(this.x, this.y, worldPoint.x, worldPoint.y);
+    // No longer rotating the sprite — direction is shown via animation frames
+  }
+
+  // ── Direction Helpers ──────────────────────────────────────────
+
+  /**
+   * Converts a radian angle to one of 8 direction names.
+   * Used to select the correct animation row/column.
+   */
+  private getDirectionFromAngle(angle: number): string {
+    // Normalize angle to 0-360
+    const deg = ((Phaser.Math.RadToDeg(angle) % 360) + 360) % 360;
+
+    // 8 directions, each covering 45 degrees
+    if (deg >= 337.5 || deg < 22.5) return 'right';
+    if (deg >= 22.5 && deg < 67.5) return 'down-right';
+    if (deg >= 67.5 && deg < 112.5) return 'down';
+    if (deg >= 112.5 && deg < 157.5) return 'down-left';
+    if (deg >= 157.5 && deg < 202.5) return 'left';
+    if (deg >= 202.5 && deg < 247.5) return 'up-left';
+    if (deg >= 247.5 && deg < 292.5) return 'up';
+    return 'up-right'; // 292.5 to 337.5
+  }
+
+  // ── Animation ──────────────────────────────────────────────────
+
+  /**
+   * Picks the correct directional animation each frame.
+   *  - Shooting: face aim (mouse) direction, play shoot anim
+   *  - Moving:   face movement direction, play walk/sprint anim
+   *  - Idle:     face last known direction, play idle anim
+   */
+  private updateAnimation(): void {
+    // Skip if using the fallback programmatic texture (no sheet animations)
+    if (this.texture.key !== 'commander-sheet') return;
+
+    // If a shoot animation is currently playing, let it finish
+    if (this.isShooting) {
+      if (this.anims.isPlaying && this.anims.currentAnim?.key.startsWith('commander-shoot-')) {
+        return;
+      }
+      // Shoot animation finished
+      this.isShooting = false;
+    }
+
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const isMoving = body.velocity.length() > 0;
+
+    if (isMoving) {
+      // Determine direction from movement velocity
+      const moveAngle = Math.atan2(body.velocity.y, body.velocity.x);
+      this.currentDirection = this.getDirectionFromAngle(moveAngle);
+
+      const animKey = this.isSprinting
+        ? `commander-sprint-${this.currentDirection}`
+        : `commander-walk-${this.currentDirection}`;
+
+      if (this.anims.currentAnim?.key !== animKey) {
+        this.play(animKey);
+      }
+    } else {
+      // Idle — face the mouse direction when standing still
+      this.currentDirection = this.getDirectionFromAngle(this.aimAngle);
+
+      const animKey = `commander-idle-${this.currentDirection}`;
+      if (this.anims.currentAnim?.key !== animKey) {
+        this.play(animKey);
+      }
+    }
   }
 
   // ── Shooting ─────────────────────────────────────────────────
@@ -181,13 +265,21 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     const fired = this.weaponSystem.fire(
       this.x,
       this.y,
-      this.rotation,
+      this.aimAngle,
       this.currentWeapon,
       'player',
     );
 
     if (fired) {
       this.ammo[this.currentWeapon]--;
+
+      // Play shoot animation facing the aim direction
+      if (this.texture.key === 'commander-sheet') {
+        const aimDir = this.getDirectionFromAngle(this.aimAngle);
+        this.currentDirection = aimDir;
+        this.isShooting = true;
+        this.play(`commander-shoot-${aimDir}`);
+      }
     }
   }
 
@@ -214,6 +306,11 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     if (this.isDead) return;
     this.isDead = true;
 
+    // Stop any current animation and play death
+    if (this.texture.key === 'commander-sheet') {
+      this.play('commander-death');
+    }
+
     // Visual feedback
     this.setTint(0xff0000);
     this.setAlpha(0.5);
@@ -228,11 +325,18 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
 
   private respawn(): void {
     this.isDead = false;
+    this.isShooting = false;
     this.health = this.maxHealth;
     this.setPosition(this.spawnX, this.spawnY);
     this.clearTint();
     this.setAlpha(1);
     (this.body as Phaser.Physics.Arcade.Body).enable = true;
+
+    // Reset to idle animation
+    if (this.texture.key === 'commander-sheet') {
+      this.currentDirection = 'down';
+      this.play('commander-idle-down');
+    }
   }
 
   // ── Weapons ──────────────────────────────────────────────────

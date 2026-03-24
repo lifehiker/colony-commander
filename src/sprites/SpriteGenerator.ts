@@ -17,6 +17,7 @@ export function generateSprites(scene: Phaser.Scene): void {
   generateTerrainTiles(scene);
   generateEffects(scene);
   generateHUDElements(scene);
+  generateBuildingSprites(scene);
 }
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -972,4 +973,434 @@ function generateHUDElements(scene: Phaser.Scene): void {
   g.fillRect(3, 14, 2, 4);
   g.fillRect(27, 14, 2, 4);
   finish(g, 'crosshair', 32, 32);
+}
+
+// ─── Building Sprites ─────────────────────────────────────────────────────────
+
+function generateBuildingSprites(scene: Phaser.Scene): void {
+  generateCommandCenter(scene);
+  generateBarracks(scene);
+  generateRefinery(scene);
+  generateSolarPlant(scene);
+  generateTurretSprite(scene);
+  generateWallSprite(scene);
+  generateMarineSprite(scene);
+  generateBuildingPreview(scene);
+}
+
+/** Command Center: 96x96 (3x3 tiles) blue building with white star */
+function generateCommandCenter(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const w = 96;
+  const h = 96;
+
+  // Foundation shadow
+  g.fillStyle(0x111122, 0.3);
+  g.fillEllipse(48, 88, 90, 16);
+
+  // Base platform
+  g.fillStyle(0x1a2744);
+  g.fillRect(4, 8, 88, 80);
+
+  // Main building body
+  g.fillStyle(0x2a4080);
+  g.fillRect(8, 12, 80, 72);
+
+  // Lighter center panel
+  g.fillStyle(0x3355aa);
+  g.fillRect(16, 20, 64, 56);
+
+  // Inner panel highlight
+  g.fillStyle(0x4466bb);
+  g.fillRect(24, 28, 48, 40);
+
+  // Roof edge
+  g.fillStyle(0x1a2744);
+  g.fillRect(4, 8, 88, 6);
+
+  // Door
+  g.fillStyle(0x112244);
+  g.fillRect(38, 58, 20, 26);
+  g.fillStyle(0x223366);
+  g.fillRect(40, 60, 16, 22);
+
+  // Windows
+  g.fillStyle(0x88ccff);
+  g.fillRect(16, 32, 12, 10);
+  g.fillRect(68, 32, 12, 10);
+  // Window shine
+  g.fillStyle(0xaaddff);
+  g.fillRect(17, 33, 4, 3);
+  g.fillRect(69, 33, 4, 3);
+
+  // Star icon (center top)
+  g.fillStyle(0xffffff);
+  // Vertical bar of star
+  g.fillRect(45, 14, 6, 16);
+  // Horizontal bar of star
+  g.fillRect(38, 19, 20, 6);
+  // Diagonal bits
+  g.fillRect(40, 16, 4, 4);
+  g.fillRect(52, 16, 4, 4);
+  g.fillRect(40, 26, 4, 4);
+  g.fillRect(52, 26, 4, 4);
+
+  // Antenna
+  g.fillStyle(0x888888);
+  g.fillRect(78, 2, 2, 12);
+  g.fillStyle(0xff3333);
+  g.fillRect(78, 0, 2, 3);
+
+  // Side armor plates
+  g.fillStyle(0x223366);
+  g.fillRect(4, 14, 6, 68);
+  g.fillRect(86, 14, 6, 68);
+
+  finish(g, 'building-command-center', w, h);
+}
+
+/** Barracks: 64x64 (2x2) dark green with helmet icon */
+function generateBarracks(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const w = 64;
+  const h = 64;
+
+  // Shadow
+  g.fillStyle(0x111122, 0.3);
+  g.fillEllipse(32, 58, 60, 12);
+
+  // Base
+  g.fillStyle(0x1a3322);
+  g.fillRect(4, 8, 56, 50);
+
+  // Main body
+  g.fillStyle(0x2a5533);
+  g.fillRect(8, 12, 48, 44);
+
+  // Lighter panel
+  g.fillStyle(0x336644);
+  g.fillRect(14, 18, 36, 32);
+
+  // Roof
+  g.fillStyle(0x1a3322);
+  g.fillRect(4, 8, 56, 5);
+
+  // Door
+  g.fillStyle(0x112211);
+  g.fillRect(24, 40, 16, 16);
+  g.fillStyle(0x1a3322);
+  g.fillRect(26, 42, 12, 12);
+
+  // Helmet icon (simplified top-down)
+  g.fillStyle(0xcccccc);
+  g.fillEllipse(32, 24, 16, 12);
+  g.fillStyle(0xdddddd);
+  g.fillEllipse(32, 23, 12, 8);
+  // Visor
+  g.fillStyle(0x44aa66);
+  g.fillRect(27, 22, 10, 3);
+  g.fillStyle(0x66cc88);
+  g.fillRect(28, 22, 4, 2);
+
+  // Side reinforcement
+  g.fillStyle(0x224433);
+  g.fillRect(4, 12, 5, 44);
+  g.fillRect(55, 12, 5, 44);
+
+  finish(g, 'building-barracks', w, h);
+}
+
+/** Refinery: 64x64 (2x2) orange/brown with gear icon */
+function generateRefinery(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const w = 64;
+  const h = 64;
+
+  // Shadow
+  g.fillStyle(0x111122, 0.3);
+  g.fillEllipse(32, 58, 60, 12);
+
+  // Base
+  g.fillStyle(0x4a3520);
+  g.fillRect(4, 8, 56, 50);
+
+  // Main body
+  g.fillStyle(0x6b4c2e);
+  g.fillRect(8, 12, 48, 44);
+
+  // Lighter panel
+  g.fillStyle(0x8b6b3e);
+  g.fillRect(14, 18, 36, 32);
+
+  // Highlight
+  g.fillStyle(0xa08050);
+  g.fillRect(18, 22, 28, 24);
+
+  // Roof
+  g.fillStyle(0x4a3520);
+  g.fillRect(4, 8, 56, 5);
+
+  // Gear icon (center)
+  g.fillStyle(0xdddddd);
+  // Gear body
+  g.fillCircle(32, 30, 8);
+  g.fillStyle(0x8b6b3e);
+  g.fillCircle(32, 30, 4);
+  // Gear teeth
+  g.fillStyle(0xdddddd);
+  g.fillRect(30, 20, 4, 4);
+  g.fillRect(30, 36, 4, 4);
+  g.fillRect(22, 28, 4, 4);
+  g.fillRect(38, 28, 4, 4);
+  // Diagonal teeth
+  g.fillRect(24, 22, 3, 3);
+  g.fillRect(37, 22, 3, 3);
+  g.fillRect(24, 35, 3, 3);
+  g.fillRect(37, 35, 3, 3);
+
+  // Pipes on side
+  g.fillStyle(0x666666);
+  g.fillRect(8, 20, 4, 30);
+  g.fillRect(52, 20, 4, 30);
+  // Pipe joints
+  g.fillStyle(0x888888);
+  g.fillRect(7, 28, 6, 3);
+  g.fillRect(51, 28, 6, 3);
+  g.fillRect(7, 40, 6, 3);
+  g.fillRect(51, 40, 6, 3);
+
+  // Smoke stack
+  g.fillStyle(0x555555);
+  g.fillRect(46, 2, 6, 10);
+  g.fillStyle(0x666666);
+  g.fillRect(47, 3, 4, 8);
+
+  finish(g, 'building-refinery', w, h);
+}
+
+/** Solar Plant: 64x32 (2x1) yellow/gold with sun rays */
+function generateSolarPlant(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const w = 64;
+  const h = 32;
+
+  // Shadow
+  g.fillStyle(0x111122, 0.2);
+  g.fillEllipse(32, 28, 58, 8);
+
+  // Base frame
+  g.fillStyle(0x555555);
+  g.fillRect(4, 4, 56, 24);
+
+  // Solar panel — dark blue
+  g.fillStyle(0x1a2266);
+  g.fillRect(6, 6, 52, 20);
+
+  // Solar cell grid
+  g.fillStyle(0x223388);
+  for (let cx = 0; cx < 4; cx++) {
+    for (let ry = 0; ry < 2; ry++) {
+      g.fillRect(8 + cx * 13, 8 + ry * 10, 11, 8);
+    }
+  }
+
+  // Cell highlights (reflections)
+  g.fillStyle(0x3344aa, 0.6);
+  for (let cx = 0; cx < 4; cx++) {
+    for (let ry = 0; ry < 2; ry++) {
+      g.fillRect(9 + cx * 13, 9 + ry * 10, 4, 3);
+    }
+  }
+
+  // Sun icon (small, top-right corner)
+  g.fillStyle(0xffcc00);
+  g.fillCircle(54, 8, 4);
+  // Sun rays
+  g.fillStyle(0xffdd44);
+  g.fillRect(53, 2, 2, 3);
+  g.fillRect(53, 11, 2, 3);
+  g.fillRect(48, 7, 3, 2);
+  g.fillRect(57, 7, 3, 2);
+
+  // Frame corners
+  g.fillStyle(0x666666);
+  g.fillRect(4, 4, 3, 3);
+  g.fillRect(57, 4, 3, 3);
+  g.fillRect(4, 25, 3, 3);
+  g.fillRect(57, 25, 3, 3);
+
+  finish(g, 'building-solar', w, h);
+}
+
+/** Turret: 32x32 gray circle with barrel line */
+function generateTurretSprite(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const s = 32;
+
+  // Shadow
+  g.fillStyle(0x111122, 0.25);
+  g.fillEllipse(16, 20, 24, 8);
+
+  // Base platform — dark gray
+  g.fillStyle(0x444444);
+  g.fillCircle(16, 16, 14);
+
+  // Main turret body
+  g.fillStyle(0x666666);
+  g.fillCircle(16, 16, 10);
+
+  // Inner ring
+  g.fillStyle(0x888888);
+  g.fillCircle(16, 16, 6);
+
+  // Center hub
+  g.fillStyle(0x555555);
+  g.fillCircle(16, 16, 3);
+
+  // Gun barrel (pointing up by default)
+  g.fillStyle(0x555555);
+  g.fillRect(14, 2, 4, 14);
+  g.fillStyle(0x777777);
+  g.fillRect(15, 2, 2, 12);
+
+  // Barrel tip
+  g.fillStyle(0x444444);
+  g.fillRect(13, 1, 6, 3);
+
+  // Rivets
+  g.fillStyle(0x999999);
+  g.fillRect(10, 10, 2, 2);
+  g.fillRect(20, 10, 2, 2);
+  g.fillRect(10, 20, 2, 2);
+  g.fillRect(20, 20, 2, 2);
+
+  finish(g, 'building-turret', s, s);
+}
+
+/** Wall: 32x32 stone gray block */
+function generateWallSprite(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const s = 32;
+
+  // Base stone color
+  g.fillStyle(0x777777);
+  g.fillRect(0, 0, s, s);
+
+  // Brick pattern
+  g.fillStyle(0x888888);
+  g.fillRect(1, 1, 14, 7);
+  g.fillRect(17, 1, 14, 7);
+  g.fillRect(8, 9, 14, 7);
+  g.fillRect(1, 17, 14, 7);
+  g.fillRect(17, 17, 14, 7);
+  g.fillRect(8, 25, 14, 6);
+
+  // Brick highlights
+  g.fillStyle(0x999999);
+  g.fillRect(2, 2, 6, 3);
+  g.fillRect(18, 2, 6, 3);
+  g.fillRect(9, 10, 6, 3);
+  g.fillRect(2, 18, 6, 3);
+  g.fillRect(18, 18, 6, 3);
+  g.fillRect(9, 26, 6, 2);
+
+  // Mortar lines (dark)
+  g.fillStyle(0x555555);
+  g.fillRect(0, 8, 32, 1);
+  g.fillRect(0, 16, 32, 1);
+  g.fillRect(0, 24, 32, 1);
+  g.fillRect(15, 0, 1, 8);
+  g.fillRect(7, 8, 1, 8);
+  g.fillRect(23, 8, 1, 8);
+  g.fillRect(15, 16, 1, 8);
+  g.fillRect(7, 24, 1, 8);
+  g.fillRect(23, 24, 1, 8);
+
+  // Edge darkening
+  g.fillStyle(0x555555, 0.4);
+  g.fillRect(0, 0, 1, 32);
+  g.fillRect(31, 0, 1, 32);
+  g.fillRect(0, 0, 32, 1);
+  g.fillRect(0, 31, 32, 1);
+
+  finish(g, 'building-wall', s, s);
+}
+
+/** Marine: 24x24 small green soldier (top-down) */
+function generateMarineSprite(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const s = 24;
+
+  // Shadow
+  g.fillStyle(0x111122, 0.25);
+  g.fillEllipse(12, 18, 14, 6);
+
+  // Boots
+  g.fillStyle(0x1a3322);
+  g.fillRect(7, 17, 4, 4);
+  g.fillRect(13, 17, 4, 4);
+
+  // Legs
+  g.fillStyle(0x2a4433);
+  g.fillRect(8, 14, 3, 4);
+  g.fillRect(13, 14, 3, 4);
+
+  // Torso
+  g.fillStyle(0x336644);
+  g.fillRect(7, 8, 10, 8);
+
+  // Torso highlight
+  g.fillStyle(0x448855);
+  g.fillRect(9, 10, 6, 4);
+
+  // Shoulder pads
+  g.fillStyle(0x2a4433);
+  g.fillRect(5, 8, 3, 4);
+  g.fillRect(16, 8, 3, 4);
+
+  // Arms
+  g.fillStyle(0x336644);
+  g.fillRect(5, 11, 2, 4);
+  g.fillRect(17, 11, 2, 4);
+
+  // Weapon in right hand
+  g.fillStyle(0x555555);
+  g.fillRect(18, 10, 2, 5);
+  g.fillStyle(0x666666);
+  g.fillRect(18, 7, 2, 4);
+
+  // Helmet
+  g.fillStyle(0x2a4433);
+  g.fillRect(8, 2, 8, 7);
+  g.fillStyle(0x336644);
+  g.fillRect(9, 3, 6, 5);
+
+  // Visor
+  g.fillStyle(0x00ff66);
+  g.fillRect(10, 4, 4, 2);
+  g.fillStyle(0x88ffaa);
+  g.fillRect(10, 4, 2, 1);
+
+  finish(g, 'unit-marine', s, s);
+}
+
+/** Building preview: semi-transparent green 32x32 tile */
+function generateBuildingPreview(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const s = 32;
+
+  g.fillStyle(0x00ff00, 0.3);
+  g.fillRect(0, 0, s, s);
+
+  g.lineStyle(1, 0x00ff00, 0.6);
+  g.strokeRect(0, 0, s, s);
+
+  // Corner markers
+  g.fillStyle(0x00ff00, 0.7);
+  g.fillRect(0, 0, 4, 4);
+  g.fillRect(28, 0, 4, 4);
+  g.fillRect(0, 28, 4, 4);
+  g.fillRect(28, 28, 4, 4);
+
+  finish(g, 'building-preview', s, s);
 }
