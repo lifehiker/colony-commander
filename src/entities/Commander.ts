@@ -119,6 +119,9 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
   private setupMouseInput(): void {
     this.scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (pointer.leftButtonDown() && !this.isDead) {
+        // Don't shoot while in build mode
+        const buildingManager = (this.scene as any).buildingManager;
+        if (buildingManager?.isBuildModeActive?.()) return;
         this.shoot();
       }
     });
@@ -170,6 +173,10 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
   }
 
   private handleWeaponSwitch(): void {
+    // Skip weapon switching when build mode is active (1-6 are used for building selection)
+    const buildingManager = (this.scene as any).buildingManager;
+    if (buildingManager?.isBuildModeActive?.()) return;
+
     if (Phaser.Input.Keyboard.JustDown(this.wasd.ONE)) {
       this.switchWeapon('pistol');
     } else if (Phaser.Input.Keyboard.JustDown(this.wasd.TWO)) {
