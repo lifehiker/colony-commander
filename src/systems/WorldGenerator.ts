@@ -190,6 +190,11 @@ export class WorldGenerator {
   private lastPlayerChunkX = Number.MIN_SAFE_INTEGER;
   private lastPlayerChunkY = Number.MIN_SAFE_INTEGER;
 
+  /** Queue of chunks waiting to be loaded (spread across frames to avoid stutter) */
+  private chunkLoadQueue: { cx: number; cy: number }[] = [];
+  /** Max chunks to load per frame */
+  private readonly CHUNKS_PER_FRAME = 2;
+
   // ──────────────────────────────────────────────────────────────
   constructor(scene: Phaser.Scene, seed?: number) {
     this.scene = scene;
@@ -214,12 +219,24 @@ export class WorldGenerator {
     const pcx = Math.floor(playerX / chunkPixelSize);
     const pcy = Math.floor(playerY / chunkPixelSize);
 
-    // Skip heavy work if the player hasn't moved to a new chunk
+    // Process queued chunk loads (spread across frames to avoid stutter)
+    const loadCount = Math.min(this.chunkLoadQueue.length, this.CHUNKS_PER_FRAME);
+    for (let i = 0; i < loadCount; i++) {
+      const queued = this.chunkLoadQueue.shift()!;
+      const key = `${queued.cx},${queued.cy}`;
+      if (!this.chunks.has(key)) {
+        this.loadChunk(queued.cx, queued.cy);
+      }
+    }
+
+    // Skip heavy recalculation if the player hasn't moved to a new chunk
     if (pcx === this.lastPlayerChunkX && pcy === this.lastPlayerChunkY) return;
     this.lastPlayerChunkX = pcx;
     this.lastPlayerChunkY = pcy;
 
-    // 1. Ensure all chunks in render radius exist
+    // 1. Queue chunks in render radius that don't exist yet
+    // Sort by distance to player so nearest chunks load first
+    const toLoad: { cx: number; cy: number; dist: number }[] = [];
     for (let dx = -CHUNK_RENDER_RADIUS; dx <= CHUNK_RENDER_RADIUS; dx++) {
       for (let dy = -CHUNK_RENDER_RADIUS; dy <= CHUNK_RENDER_RADIUS; dy++) {
         const cx = pcx + dx;
@@ -227,10 +244,17 @@ export class WorldGenerator {
         if (cx < 0 || cy < 0 || cx >= WORLD_SIZE || cy >= WORLD_SIZE) continue;
         const key = `${cx},${cy}`;
         if (!this.chunks.has(key)) {
-          this.loadChunk(cx, cy);
+          // Skip if already in queue
+          const alreadyQueued = this.chunkLoadQueue.some(q => q.cx === cx && q.cy === cy);
+          if (!alreadyQueued) {
+            toLoad.push({ cx, cy, dist: dx * dx + dy * dy });
+          }
         }
       }
     }
+    // Load nearest chunks first
+    toLoad.sort((a, b) => a.dist - b.dist);
+    this.chunkLoadQueue.push(...toLoad);
 
     // 2. Unload distant chunks
     for (const [key, chunk] of this.chunks) {

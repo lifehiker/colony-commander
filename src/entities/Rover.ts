@@ -8,9 +8,9 @@ const RUN_OVER_SPEED_THRESHOLD = 200;
 const RUN_OVER_DAMAGE = 50;
 const INTERACTION_RANGE = 60;
 const MAX_FUEL = 100;
-const ACCELERATION_LERP = 0.08;
-const DECELERATION_LERP = 0.06;
-const ROTATION_LERP = 0.12;
+const ACCELERATION_LERP = 0.18;
+const DECELERATION_LERP = 0.12;
+const ROTATION_LERP = 0.25;
 
 export class Rover extends Phaser.Physics.Arcade.Sprite {
   speed: number = ROVER_SPEED;
@@ -199,10 +199,12 @@ export class Rover extends Phaser.Physics.Arcade.Sprite {
 
       body.setVelocity(newVx, newVy);
 
-      // Smooth rotation toward movement direction
+      // Face the INTENDED direction (target velocity), not the interpolated velocity
+      // This prevents the "spinning" effect when velocity lerps through small values
       const currentSpeed = Math.sqrt(newVx * newVx + newVy * newVy);
-      if (currentSpeed > 10) {
-        const targetAngle = Math.atan2(newVy, newVx);
+      if (this.targetVelocityX !== 0 || this.targetVelocityY !== 0) {
+        // Use target direction for instant, responsive facing
+        const targetAngle = Math.atan2(this.targetVelocityY, this.targetVelocityX);
         this.rotation = Phaser.Math.Angle.RotateTo(this.rotation, targetAngle, ROTATION_LERP);
       }
 
