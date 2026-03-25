@@ -609,9 +609,12 @@ export class HUD extends Phaser.Scene {
   }
 
   showLootPickup(text: string): void {
+    // Offset below any existing popups so they don't stack on top of each other
+    const offsetY = this.lootPopups.length * 20;
+
     const lootText = this.add.text(
       W / 2,
-      H / 2 + 40,
+      H / 2 + 40 + offsetY,
       text,
       textStyle(14, CLR_AMMO_HEX, true),
     );
