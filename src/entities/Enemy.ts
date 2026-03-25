@@ -67,6 +67,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       body.setOffset(this.width / 2 - halfSize, this.height / 2 - halfSize);
     }
 
+    // Render above terrain (grass=0, trees=1)
+    this.setDepth(6);
+
     // Health bar graphics
     this.healthBar = scene.add.graphics();
     this.healthBar.setDepth(10);
