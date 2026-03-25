@@ -40,12 +40,12 @@ export class MiningSystem {
   private maxUses: number = 4; // each deposit can be mined 4 times
 
   // Key binding
-  private keyF: Phaser.Input.Keyboard.Key;
+  private keyM: Phaser.Input.Keyboard.Key;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
 
-    this.keyF = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    this.keyM = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.M);
 
     // Create graphics objects for the progress bar (hidden by default)
     this.progressBarBg = scene.add.graphics();
@@ -120,7 +120,7 @@ export class MiningSystem {
       result.showPrompt = true;
 
       // Check for F key press to start mining
-      if (Phaser.Input.Keyboard.JustDown(this.keyF)) {
+      if (Phaser.Input.Keyboard.JustDown(this.keyM)) {
         this.startMining(nearbyOre);
         result.isMining = true;
       }

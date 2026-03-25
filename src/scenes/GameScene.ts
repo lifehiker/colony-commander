@@ -636,7 +636,7 @@ export class GameScene extends Phaser.Scene {
     // Show/hide mining prompt
     if (this.hud && !occupied) {
       if (miningResult.showPrompt) {
-        this.hud.showVehiclePrompt(true, 'Ore Deposit (F to mine)');
+        this.hud.showVehiclePrompt(true, 'Ore Deposit (M to mine)');
       }
       // Don't override vehicle prompt if near a vehicle
     }
