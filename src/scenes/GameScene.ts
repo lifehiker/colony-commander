@@ -154,6 +154,9 @@ export class GameScene extends Phaser.Scene {
     // Commander vs buildings (block movement)
     this.physics.add.collider(this.commander, buildingGroup);
 
+    // Enemies vs world (same terrain rules as player)
+    this.physics.add.collider(this.enemySpawner.getEnemies(), collisionGroup);
+
     // Player bullets vs enemies
     this.physics.add.overlap(
       this.weaponSystem.getBullets(),
@@ -163,14 +166,8 @@ export class GameScene extends Phaser.Scene {
       this,
     );
 
-    // Player bullets vs world (destroy on impact)
-    this.physics.add.collider(
-      this.weaponSystem.getBullets(),
-      collisionGroup,
-      this.onBulletHitWorld as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined,
-      this,
-    );
+    // Bullets pass through terrain — no bullet vs world collider
+    // (shooting across water/over trees should work)
 
     // Enemies vs commander (contact damage)
     this.physics.add.overlap(
@@ -283,14 +280,6 @@ export class GameScene extends Phaser.Scene {
     enemy.takeDamage(meta.damage);
 
     // Recycle bullet
-    bullet.setActive(false).setVisible(false);
-    (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
-  }
-
-  private onBulletHitWorld(
-    bulletObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
-  ): void {
-    const bullet = bulletObj as Phaser.Physics.Arcade.Image;
     bullet.setActive(false).setVisible(false);
     (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
   }

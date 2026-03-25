@@ -112,14 +112,12 @@ export class EnemySpawner {
   }
 
   private isSpawnLocationValid(x: number, y: number): boolean {
-    // If the scene exposes a collision tilemap layer, check it
-    const collisionLayer = (this.scene as any).collisionLayer as
-      | Phaser.Tilemaps.TilemapLayer
-      | undefined;
-    if (collisionLayer) {
-      const tile = collisionLayer.getTileAtWorldXY(x, y);
-      if (tile && tile.index !== -1) {
-        return false; // occupied collision tile
+    // Check via WorldGenerator if available
+    const world = (this.scene as any).world;
+    if (world?.getTileAt) {
+      const tileType = world.getTileAt(x, y);
+      if (tileType === 'water' || tileType === 'rock' || tileType === 'tree') {
+        return false;
       }
     }
     return true;
