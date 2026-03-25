@@ -126,13 +126,10 @@ export class Turret extends Building {
     body.reset(this.x, this.y);
     this.scene.physics.velocityFromRotation(angle, 500, body.velocity);
 
-    // Auto-destroy after traveling max range
-    this.scene.time.delayedCall(600, () => {
-      if (bullet.active) {
-        bullet.setActive(false).setVisible(false);
-        (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
-      }
-    });
+    // Store origin for distance-based cleanup (no timer — avoids stale callback bug)
+    bullet.setData('originX', this.x);
+    bullet.setData('originY', this.y);
+    bullet.setData('maxRange', this.range + 50);
 
     // Muzzle flash
     const fx = this.x + Math.cos(angle) * 16;

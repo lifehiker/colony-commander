@@ -321,10 +321,12 @@ export class BuildingManager {
     this.turretBullets.getChildren().forEach((obj) => {
       const bullet = obj as Phaser.Physics.Arcade.Image;
       if (!bullet.active) return;
-      const meta = bullet.getData('meta');
-      if (!meta) return;
-      const dist = Phaser.Math.Distance.Between(meta.originX, meta.originY, bullet.x, bullet.y);
-      if (dist > 400) {
+      const originX = bullet.getData('originX');
+      const originY = bullet.getData('originY');
+      const maxRange = bullet.getData('maxRange') ?? 250;
+      if (originX == null || originY == null) return;
+      const dist = Phaser.Math.Distance.Between(originX, originY, bullet.x, bullet.y);
+      if (dist > maxRange) {
         bullet.setActive(false).setVisible(false);
         (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
       }
