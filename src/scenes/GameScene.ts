@@ -13,6 +13,8 @@ import { BuildingManager } from '../systems/BuildingManager';
 import { ResourceManager } from '../systems/ResourceManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TrainingQueue } from '../systems/TrainingQueue';
+import { MiningSystem } from '../systems/MiningSystem';
+import { SoundManager } from '../systems/SoundManager';
 import { HUD } from '../ui/HUD';
 import { ColonyHUD } from '../ui/ColonyHUD';
 
@@ -34,6 +36,10 @@ export class GameScene extends Phaser.Scene {
   unitManager!: UnitManager;
   trainingQueue!: TrainingQueue;
   colonyHUD!: ColonyHUD;
+
+  // Phase 3 systems
+  miningSystem!: MiningSystem;
+  soundManager!: SoundManager;
 
   // Loot items on the ground
   lootGroup!: Phaser.Physics.Arcade.Group;
@@ -82,6 +88,8 @@ export class GameScene extends Phaser.Scene {
     this.buildingManager = new BuildingManager(this, this.resourceManager, this.world);
     this.unitManager = new UnitManager(this);
     this.trainingQueue = new TrainingQueue();
+    this.miningSystem = new MiningSystem(this);
+    this.soundManager = new SoundManager();
 
     // ── Loot group ───────────────────────────────────────────────
     this.lootGroup = this.physics.add.group({
@@ -250,6 +258,42 @@ export class GameScene extends Phaser.Scene {
       if (this.hud) {
         this.hud.showKillFeed(`${enemy.enemyType} eliminated +${enemy.xpReward} XP`);
       }
+      if (this.soundManager) this.soundManager.playEnemyDeath();
+    });
+
+    // Sound: commander shooting
+    this.events.on('commander-shoot', (weapon: string) => {
+      if (!this.soundManager) return;
+      switch (weapon) {
+        case 'pistol': this.soundManager.playPistolShot(); break;
+        case 'rifle': this.soundManager.playRifleShot(); break;
+        case 'shotgun': this.soundManager.playShotgunBlast(); break;
+      }
+    });
+
+    // Sound: commander damaged
+    this.events.on('commander-damaged', () => {
+      if (this.soundManager) this.soundManager.playDamageTaken();
+    });
+
+    // Sound: building placed
+    this.events.on('building-placed', () => {
+      if (this.soundManager) this.soundManager.playBuildingPlace();
+    });
+
+    // Sound: commander level up
+    this.events.on('commander-levelup', () => this.soundManager?.playLevelUp());
+
+    // Sound: vehicle enter/exit
+    this.events.on('vehicle-entered', () => {
+      this.soundManager?.playVehicleEnter();
+      this.soundManager?.playVehicleEngine();
+    });
+    this.events.on('vehicle-exited', () => this.soundManager?.stopVehicleEngine());
+
+    // Mining: deposit depleted
+    this.events.on('deposit-depleted', (_pos: {x: number, y: number}) => {
+      // Could change the tile visually in the future
     });
 
     // When a friendly unit fires a bullet, wire overlap with enemies
@@ -338,6 +382,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.hud) this.hud.showLootPickup(pickupText);
+    if (this.soundManager) this.soundManager.playLootPickup();
     lootSprite.destroy();
   }
 
@@ -573,6 +618,43 @@ export class GameScene extends Phaser.Scene {
     this.buildingManager.update(time, delta, this.commander.x, this.commander.y, this.enemySpawner.getEnemies());
     this.unitManager.update(time, delta, playerX, playerY, this.enemySpawner.getEnemies());
 
+    // Mining system
+    const enemiesGroup = this.enemySpawner.getEnemies();
+    let enemiesNearby = false;
+    enemiesGroup.getChildren().forEach((child) => {
+      const e = child as Enemy;
+      if (e.active && Phaser.Math.Distance.Between(playerX, playerY, e.x, e.y) < 150) {
+        enemiesNearby = true;
+      }
+    });
+    const miningResult = this.miningSystem.update(
+      time, delta, playerX, playerY,
+      (x, y) => this.world.getTileAt(x, y),
+      enemiesNearby,
+    );
+
+    // Show/hide mining prompt
+    if (this.hud && !occupied) {
+      if (miningResult.showPrompt) {
+        this.hud.showVehiclePrompt(true, 'Ore Deposit (F to mine)');
+      }
+      // Don't override vehicle prompt if near a vehicle
+    }
+
+    // Handle mining completion
+    if (miningResult.mined) {
+      this.resourceManager.add('ore', miningResult.amount);
+      if (this.hud) this.hud.showLootPickup(`+${miningResult.amount} Ore (mined)`);
+      if (this.colonyHUD) this.colonyHUD.showAlert(`Mined ${miningResult.amount} Ore!`);
+      this.soundManager?.playMiningComplete();
+    }
+
+    // Prevent commander movement while mining
+    if (miningResult.isMining && !occupied) {
+      const body = this.commander.body as Phaser.Physics.Arcade.Body;
+      body.setVelocity(0, 0);
+    }
+
     // Training queue
     this.handleTrainingInput();
     this.processTrainingQueue(delta);
@@ -633,6 +715,8 @@ export class GameScene extends Phaser.Scene {
         enemies,
         vehicles,
         { width: worldSize, height: worldSize },
+        (x, y) => this.world.getTileAt(x, y),
+        this.buildingManager.getBuildings().map(b => ({ x: b.x, y: b.y, type: b.buildingType })),
       );
     }
 

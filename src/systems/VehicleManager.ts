@@ -86,6 +86,7 @@ export class VehicleManager {
     commander.setVisible(false);
     (commander.body as Phaser.Physics.Arcade.Body).enable = false;
 
+    this.scene.events.emit('vehicle-entered');
     return true;
   }
 
@@ -100,6 +101,7 @@ export class VehicleManager {
     commander.setVisible(true);
     (commander.body as Phaser.Physics.Arcade.Body).enable = true;
 
+    this.scene.events.emit('vehicle-exited');
     return true;
   }
 

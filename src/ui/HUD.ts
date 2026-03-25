@@ -11,6 +11,30 @@ const MINIMAP_SIZE = 180;
 const KILL_FEED_MAX = 3;
 const KILL_FEED_DURATION = 3000;
 const MINIMAP_UPDATE_INTERVAL = 10; // frames
+const MINIMAP_VIEW_RANGE = 1500; // world units visible on minimap
+const MINIMAP_CHUNK_SIZE = 512; // world-pixel size of one chunk (16 tiles * 32px)
+const MINIMAP_TERRAIN_STEP = 3; // sample every N pixels for performance
+const FOG_COLOR = 0x0a0a14;
+
+// Terrain colors for minimap rendering
+const TERRAIN_COLORS: Record<string, number> = {
+  grass: 0x2d5a1e,
+  dirt: 0x6b4423,
+  water: 0x1a3a6b,
+  rock: 0x555555,
+  tree: 0x1a4a0e,
+  ore: 0x00aaaa,
+};
+
+// Building colors and sizes for minimap rendering
+const BUILDING_MINIMAP: Record<string, { color: number; w: number; h: number }> = {
+  command_center: { color: 0x4488ff, w: 4, h: 4 },
+  barracks: { color: 0x44ff44, w: 3, h: 3 },
+  refinery: { color: 0xff8800, w: 3, h: 3 },
+  solar_plant: { color: 0xffff00, w: 2, h: 3 },
+  turret: { color: 0xffffff, w: 2, h: 2 },
+  wall: { color: 0x888888, w: 2, h: 2 },
+};
 
 // Colors
 const CLR_HEALTH = 0xff3333;
@@ -100,7 +124,11 @@ export class HUD extends Phaser.Scene {
   // ── Minimap ────────────────────────────────────────────────
   private minimapBg!: Phaser.GameObjects.Graphics;
   private minimapContent!: Phaser.GameObjects.Graphics;
+  private minimapTerrain!: Phaser.GameObjects.Graphics;
   private minimapFrame = 0;
+  private exploredChunks: Set<string> = new Set();
+  private lastMinimapChunkX = Number.MIN_SAFE_INTEGER;
+  private lastMinimapChunkY = Number.MIN_SAFE_INTEGER;
 
   // ── Fuel ───────────────────────────────────────────────────
   private fuelContainer!: Phaser.GameObjects.Container;
@@ -266,7 +294,10 @@ export class HUD extends Phaser.Scene {
     this.minimapBg.lineStyle(2, CLR_MINIMAP_BORDER, 0.8);
     this.minimapBg.strokeRoundedRect(x, y, MINIMAP_SIZE, MINIMAP_SIZE, 4);
 
-    // Content layer (redrawn on update)
+    // Terrain layer (redrawn only on chunk change)
+    this.minimapTerrain = this.add.graphics();
+
+    // Content layer for entities (redrawn on update)
     this.minimapContent = this.add.graphics();
   }
 
@@ -475,6 +506,8 @@ export class HUD extends Phaser.Scene {
     enemies: { x: number; y: number }[],
     vehicles: { x: number; y: number }[],
     mapBounds: { width: number; height: number },
+    getTileAt?: (x: number, y: number) => string,
+    buildings?: { x: number; y: number; type: string }[],
   ): void {
     // Throttle redraws
     if (this.minimapFrame % MINIMAP_UPDATE_INTERVAL !== 0) return;
@@ -482,17 +515,61 @@ export class HUD extends Phaser.Scene {
     const mx = W - PAD - MINIMAP_SIZE;
     const my = H - PAD - MINIMAP_SIZE;
     const half = MINIMAP_SIZE / 2;
-    const viewRange = 1500; // world units visible on minimap
+    const viewRange = MINIMAP_VIEW_RANGE;
 
+    // ── Mark explored chunks near the player ──────────────────
+    const playerChunkX = Math.floor(playerPos.x / MINIMAP_CHUNK_SIZE);
+    const playerChunkY = Math.floor(playerPos.y / MINIMAP_CHUNK_SIZE);
+
+    // Exploration radius in chunks (~view range / chunk size + 1)
+    const exploreRadius = Math.ceil(viewRange / MINIMAP_CHUNK_SIZE) + 1;
+    for (let dcx = -exploreRadius; dcx <= exploreRadius; dcx++) {
+      for (let dcy = -exploreRadius; dcy <= exploreRadius; dcy++) {
+        this.exploredChunks.add(`${playerChunkX + dcx},${playerChunkY + dcy}`);
+      }
+    }
+
+    // ── Terrain layer — only redraw when player moves to a new chunk ──
+    if (
+      getTileAt &&
+      (playerChunkX !== this.lastMinimapChunkX || playerChunkY !== this.lastMinimapChunkY)
+    ) {
+      this.lastMinimapChunkX = playerChunkX;
+      this.lastMinimapChunkY = playerChunkY;
+      this.redrawMinimapTerrain(playerPos, mx, my, half, viewRange, getTileAt);
+    }
+
+    // ── Entity layer (redrawn every update tick) ──────────────
     this.minimapContent.clear();
 
-    // Player dot (center, bright green)
-    this.minimapContent.fillStyle(0x00ff44, 1);
-    this.minimapContent.fillCircle(mx + half, my + half, 4);
+    // Buildings
+    if (buildings) {
+      for (const b of buildings) {
+        const dx = b.x - playerPos.x;
+        const dy = b.y - playerPos.y;
+        if (Math.abs(dx) > viewRange || Math.abs(dy) > viewRange) continue;
 
-    // Glow ring around player
-    this.minimapContent.lineStyle(1, 0x00ff44, 0.4);
-    this.minimapContent.strokeCircle(mx + half, my + half, 6);
+        const dotX = mx + half + (dx / viewRange) * half;
+        const dotY = my + half + (dy / viewRange) * half;
+        if (dotX < mx || dotX > mx + MINIMAP_SIZE) continue;
+        if (dotY < my || dotY > my + MINIMAP_SIZE) continue;
+
+        const bConfig = BUILDING_MINIMAP[b.type];
+        if (bConfig) {
+          this.minimapContent.fillStyle(bConfig.color, 0.95);
+          this.minimapContent.fillRect(
+            dotX - bConfig.w / 2,
+            dotY - bConfig.h / 2,
+            bConfig.w,
+            bConfig.h,
+          );
+        } else {
+          // Fallback for unknown building types
+          this.minimapContent.fillStyle(0xcccccc, 0.8);
+          this.minimapContent.fillRect(dotX - 1, dotY - 1, 3, 3);
+        }
+      }
+    }
 
     // Enemies (red dots)
     for (const e of enemies) {
@@ -503,7 +580,6 @@ export class HUD extends Phaser.Scene {
       const dotX = mx + half + (dx / viewRange) * half;
       const dotY = my + half + (dy / viewRange) * half;
 
-      // Clip to minimap bounds
       if (dotX < mx || dotX > mx + MINIMAP_SIZE) continue;
       if (dotY < my || dotY > my + MINIMAP_SIZE) continue;
 
@@ -525,6 +601,64 @@ export class HUD extends Phaser.Scene {
 
       this.minimapContent.fillStyle(0x3399ff, 0.9);
       this.minimapContent.fillRect(dotX - 2, dotY - 2, 4, 4);
+    }
+
+    // Player dot (center, bright green) — drawn last so it's on top
+    this.minimapContent.fillStyle(0x00ff44, 1);
+    this.minimapContent.fillCircle(mx + half, my + half, 4);
+
+    // Glow ring around player
+    this.minimapContent.lineStyle(1, 0x00ff44, 0.4);
+    this.minimapContent.strokeCircle(mx + half, my + half, 6);
+  }
+
+  /**
+   * Redraws the minimap terrain layer. Called only when the player moves
+   * to a new chunk, not every frame, for performance.
+   */
+  private redrawMinimapTerrain(
+    playerPos: { x: number; y: number },
+    mx: number,
+    my: number,
+    half: number,
+    viewRange: number,
+    getTileAt: (x: number, y: number) => string,
+  ): void {
+    this.minimapTerrain.clear();
+
+    // Fill entire minimap area with fog color first
+    this.minimapTerrain.fillStyle(FOG_COLOR, 1);
+    this.minimapTerrain.fillRect(mx, my, MINIMAP_SIZE, MINIMAP_SIZE);
+
+    // Sample terrain at intervals for performance
+    for (let px = 0; px < MINIMAP_SIZE; px += MINIMAP_TERRAIN_STEP) {
+      for (let py = 0; py < MINIMAP_SIZE; py += MINIMAP_TERRAIN_STEP) {
+        // Convert minimap pixel to world coordinates
+        const worldX = playerPos.x + ((px - half) / half) * viewRange;
+        const worldY = playerPos.y + ((py - half) / half) * viewRange;
+
+        // Check if this world position is in an explored chunk
+        const chunkX = Math.floor(worldX / MINIMAP_CHUNK_SIZE);
+        const chunkY = Math.floor(worldY / MINIMAP_CHUNK_SIZE);
+        const chunkKey = `${chunkX},${chunkY}`;
+
+        if (!this.exploredChunks.has(chunkKey)) {
+          continue; // Leave as fog color
+        }
+
+        // Get tile type and render color
+        const tileType = getTileAt(worldX, worldY);
+        const color = TERRAIN_COLORS[tileType];
+        if (color !== undefined) {
+          this.minimapTerrain.fillStyle(color, 0.85);
+          this.minimapTerrain.fillRect(
+            mx + px,
+            my + py,
+            MINIMAP_TERRAIN_STEP,
+            MINIMAP_TERRAIN_STEP,
+          );
+        }
+      }
     }
   }
 

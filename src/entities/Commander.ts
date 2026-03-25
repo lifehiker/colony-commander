@@ -287,6 +287,8 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
         this.isShooting = true;
         this.play(`commander-shoot-${aimDir}`);
       }
+
+      this.scene.events.emit('commander-shoot', this.currentWeapon);
     }
   }
 
@@ -296,6 +298,7 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     if (this.isDead) return;
 
     this.health = Math.max(0, this.health - amount);
+    this.scene.events.emit('commander-damaged');
 
     // Flash red
     this.setTint(0xff0000);
@@ -364,6 +367,7 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
       this.level++;
       this.maxHealth += 5;
       this.health = Math.min(this.health + 5, this.maxHealth);
+      this.scene.events.emit('commander-levelup');
     }
   }
 

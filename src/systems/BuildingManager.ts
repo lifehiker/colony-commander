@@ -228,6 +228,7 @@ export class BuildingManager {
     // Recalculate production rates
     this.resourceManager.updateProduction(this.buildings);
 
+    this.scene.events.emit('building-placed');
     return building;
   }
 
