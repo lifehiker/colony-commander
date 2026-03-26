@@ -73,8 +73,27 @@ export class GameScene extends Phaser.Scene {
     // ── Weapon system ────────────────────────────────────────────
     this.weaponSystem = new WeaponSystem(this);
 
+    // ── Find valid spawn point on grass/dirt ───────────────────────
+    let spawnX = SPAWN_X;
+    let spawnY = SPAWN_Y;
+    for (let r = 0; r < 500; r += 32) {
+      let found = false;
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+        const tx = SPAWN_X + Math.cos(a) * r;
+        const ty = SPAWN_Y + Math.sin(a) * r;
+        const tile = this.world.getTileAt(tx, ty);
+        if (tile === 'grass' || tile === 'dirt') {
+          spawnX = tx;
+          spawnY = ty;
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+
     // ── Commander (player) ───────────────────────────────────────
-    this.commander = new Commander(this, SPAWN_X, SPAWN_Y);
+    this.commander = new Commander(this, spawnX, spawnY);
     this.commander.setWeaponSystem(this.weaponSystem);
 
     // ── Enemy spawner ────────────────────────────────────────────
@@ -83,7 +102,7 @@ export class GameScene extends Phaser.Scene {
     // ── Vehicle manager ──────────────────────────────────────────
     this.vehicleManager = new VehicleManager(this);
     this.vehicleManager.setCommander(this.commander);
-    this.vehicleManager.spawnRoversNear(SPAWN_X, SPAWN_Y, 3, 400);
+    this.vehicleManager.spawnRoversNear(spawnX, spawnY, 3, 400);
 
     // ── Phase 2: Resource, Building, Unit, Training systems ──────
     this.resourceManager = new ResourceManager();
@@ -129,7 +148,7 @@ export class GameScene extends Phaser.Scene {
     this.colonyHUD = this.scene.get('ColonyHUDScene') as ColonyHUD;
 
     // ── Place initial Command Center at spawn ────────────────────
-    this.buildingManager.placeCommandCenter(SPAWN_X, SPAWN_Y);
+    this.buildingManager.placeCommandCenter(spawnX, spawnY);
 
     // ── Initial world load ───────────────────────────────────────
     this.world.update(this.commander.x, this.commander.y);
@@ -146,8 +165,8 @@ export class GameScene extends Phaser.Scene {
       const dist = 300 + Math.random() * 300;
       const type = Math.random() < 0.6 ? 'basicAlien' : Math.random() < 0.75 ? 'spitter' : 'brute';
       this.enemySpawner.spawnEnemy(
-        SPAWN_X + Math.cos(angle) * dist,
-        SPAWN_Y + Math.sin(angle) * dist,
+        spawnX + Math.cos(angle) * dist,
+        spawnY + Math.sin(angle) * dist,
         type,
       );
     }
@@ -229,6 +248,31 @@ export class GameScene extends Phaser.Scene {
         undefined,
         this,
       );
+
+      // Vehicles can pick up loot too
+      this.physics.add.overlap(
+        rover,
+        this.lootGroup,
+        this.onPickupLoot as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+        undefined,
+        this,
+      );
+
+      // Also pick up resource crates from vehicle
+      this.physics.add.overlap(
+        rover,
+        this.crateSpawner.getCrates(),
+        (_roverObj, crateObj) => {
+          const crate = crateObj as Phaser.Physics.Arcade.Sprite;
+          if (!crate.active) return;
+          const isOre = Math.random() < 0.5;
+          const amount = isOre ? Phaser.Math.Between(30, 60) : Phaser.Math.Between(15, 30);
+          this.resourceManager.add(isOre ? 'ore' : 'energy', amount);
+          if (this.hud) this.hud.showLootPickup(`+${amount} ${isOre ? 'Ore' : 'Energy'} (crate)`);
+          if (this.soundManager) this.soundManager.playLootPickup();
+          crate.destroy();
+        },
+      );
     }
 
     // Turret bullets vs enemies
@@ -300,6 +344,12 @@ export class GameScene extends Phaser.Scene {
           if (this.hud) this.hud.showDamageFlash();
         },
       );
+    });
+
+    // Commander died — show death message
+    this.events.on('commander-died', () => {
+      if (this.hud) this.hud.showKillFeed('YOU DIED - Respawning at base...');
+      if (this.soundManager) this.soundManager.playDamageTaken();
     });
 
     // When an enemy is killed

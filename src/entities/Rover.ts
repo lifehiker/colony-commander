@@ -143,12 +143,30 @@ export class Rover extends Phaser.Physics.Arcade.Sprite {
       this.tireTrackEmitter.emitting = false;
     }
 
-    // Exit position: offset to the right of the rover
-    const exitAngle = this.rotation - Math.PI / 2;
-    return {
-      x: this.x + Math.cos(exitAngle) * 50,
-      y: this.y + Math.sin(exitAngle) * 50,
-    };
+    // Try multiple positions to find valid exit point (not on water/trees/rocks)
+    const world = (this.scene as any).world;
+    const angles = [
+      this.rotation - Math.PI / 2,  // right
+      this.rotation + Math.PI / 2,  // left
+      this.rotation + Math.PI,      // behind
+      this.rotation,                 // in front
+    ];
+
+    for (const angle of angles) {
+      const ex = this.x + Math.cos(angle) * 50;
+      const ey = this.y + Math.sin(angle) * 50;
+      if (world?.getTileAt) {
+        const tile = world.getTileAt(ex, ey);
+        if (tile === 'grass' || tile === 'dirt' || tile === 'ore') {
+          return { x: ex, y: ey };
+        }
+      } else {
+        return { x: ex, y: ey };
+      }
+    }
+
+    // Fallback: exit at rover position
+    return { x: this.x, y: this.y };
   }
 
   // ── Driving ──────────────────────────────────────────────────

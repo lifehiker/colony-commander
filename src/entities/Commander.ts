@@ -57,6 +57,7 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
   private spawnX: number;
   private spawnY: number;
   private damageFlashTimer: Phaser.Time.TimerEvent | null = null;
+  private invulnTimer: number = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     // Use the sprite sheet if available, fall back to programmatic texture
@@ -136,8 +137,20 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
 
   // ── Update Loop ──────────────────────────────────────────────
 
-  update(_time: number, _delta: number): void {
+  update(_time: number, delta: number): void {
     if (this.isDead || this.isInVehicle) return;
+
+    // Tick down invulnerability timer
+    if (this.invulnTimer > 0) {
+      this.invulnTimer -= delta;
+      // Flash alpha to indicate invulnerability
+      const flash = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
+      this.setAlpha(flash);
+      if (this.invulnTimer <= 0) {
+        this.invulnTimer = 0;
+        this.setAlpha(1);
+      }
+    }
 
     this.handleMovement();
     this.handleWeaponSwitch();
@@ -296,6 +309,7 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
 
   takeDamage(amount: number): void {
     if (this.isDead) return;
+    if (this.invulnTimer > 0) return;
 
     this.health = Math.max(0, this.health - amount);
     this.scene.events.emit('commander-damaged');
@@ -327,6 +341,9 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     (this.body as Phaser.Physics.Arcade.Body).enable = false;
 
+    // Emit death event for HUD message
+    this.scene.events.emit('commander-died');
+
     // Respawn after 2 seconds
     this.scene.time.delayedCall(2000, () => {
       this.respawn();
@@ -337,10 +354,54 @@ export class Commander extends Phaser.Physics.Arcade.Sprite {
     this.isDead = false;
     this.isShooting = false;
     this.health = this.maxHealth;
-    this.setPosition(this.spawnX, this.spawnY);
+
+    // Try to respawn at Command Center; fall back to original spawn
+    let respawnX = this.spawnX;
+    let respawnY = this.spawnY;
+    const buildingManager = (this.scene as any).buildingManager;
+    if (buildingManager?.getBuildings) {
+      const commandCenter = buildingManager.getBuildings().find(
+        (b: any) => b.buildingType === 'command_center' && b.active,
+      );
+      if (commandCenter) {
+        respawnX = commandCenter.x;
+        respawnY = commandCenter.y;
+      }
+    }
+
+    // Check that the respawn position is on valid ground; if not, try offsets
+    const world = (this.scene as any).world;
+    if (world?.getTileAt) {
+      const tile = world.getTileAt(respawnX, respawnY);
+      if (tile !== 'grass' && tile !== 'dirt' && tile !== 'ore') {
+        let found = false;
+        for (let r = 32; r <= 256; r += 32) {
+          for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+            const tx = respawnX + Math.cos(a) * r;
+            const ty = respawnY + Math.sin(a) * r;
+            const t = world.getTileAt(tx, ty);
+            if (t === 'grass' || t === 'dirt' || t === 'ore') {
+              respawnX = tx;
+              respawnY = ty;
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+    }
+
+    this.setPosition(respawnX, respawnY);
     this.clearTint();
     this.setAlpha(1);
     (this.body as Phaser.Physics.Arcade.Body).enable = true;
+
+    // Death penalty: lose 10% of score
+    this.score = Math.floor(this.score * 0.9);
+
+    // 3 seconds of invulnerability
+    this.invulnTimer = 3000;
 
     // Reset to idle animation
     if (this.texture.key === 'commander-sheet') {
