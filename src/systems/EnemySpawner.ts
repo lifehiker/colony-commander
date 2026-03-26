@@ -106,26 +106,33 @@ export class EnemySpawner {
 
     // Basic collision-tile check — skip spawning on water/rock tiles
     // If the scene has a tilemap layer called 'collision', verify the tile is clear
-    if (!this.isSpawnLocationValid(x, y)) {
-      // Try once more at a different angle rather than skipping entirely
-      const retryAngle = angle + Math.PI * 0.5;
-      const rx = playerX + Math.cos(retryAngle) * dist;
-      const ry = playerY + Math.sin(retryAngle) * dist;
-      if (this.isSpawnLocationValid(rx, ry)) {
-        this.spawnEnemy(rx, ry, type);
+    // Try multiple angles to find valid spawn location
+    let spawnX = x;
+    let spawnY = y;
+    let found = this.isSpawnLocationValid(spawnX, spawnY);
+
+    if (!found) {
+      for (let attempt = 1; attempt <= 7; attempt++) {
+        const retryAngle = angle + (Math.PI * 2 * attempt) / 8;
+        spawnX = playerX + Math.cos(retryAngle) * dist;
+        spawnY = playerY + Math.sin(retryAngle) * dist;
+        if (this.isSpawnLocationValid(spawnX, spawnY)) {
+          found = true;
+          break;
+        }
       }
-      return;
     }
 
-    this.spawnEnemy(x, y, type);
+    if (found) {
+      this.spawnEnemy(spawnX, spawnY, type);
+    }
   }
 
   private isSpawnLocationValid(x: number, y: number): boolean {
-    // Check via WorldGenerator if available
     const world = (this.scene as any).world;
     if (world?.getTileAt) {
       const tileType = world.getTileAt(x, y);
-      if (tileType === 'water' || tileType === 'rock' || tileType === 'tree') {
+      if (tileType === 'water' || tileType === 'rock' || tileType === 'tree' || tileType === 'ore') {
         return false;
       }
     }

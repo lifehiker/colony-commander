@@ -113,16 +113,37 @@ export class VehicleManager {
    */
   spawnRoversNear(x: number, y: number, count: number = 3, radius: number = 400): Rover[] {
     const spawned: Rover[] = [];
+    const world = (this.scene as any).world;
 
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 100 + Math.random() * radius;
-      const rx = x + Math.cos(angle) * dist;
-      const ry = y + Math.sin(angle) * dist;
+      let rx = 0;
+      let ry = 0;
+      let found = false;
 
-      const rover = new Rover(this.scene, rx, ry);
-      this.addVehicle(rover);
-      spawned.push(rover);
+      // Try up to 10 positions to find valid ground
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 100 + Math.random() * radius;
+        rx = x + Math.cos(angle) * dist;
+        ry = y + Math.sin(angle) * dist;
+
+        if (world?.getTileAt) {
+          const tileType = world.getTileAt(rx, ry);
+          if (tileType === 'grass' || tileType === 'dirt') {
+            found = true;
+            break;
+          }
+        } else {
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        const rover = new Rover(this.scene, rx, ry);
+        this.addVehicle(rover);
+        spawned.push(rover);
+      }
     }
 
     return spawned;
