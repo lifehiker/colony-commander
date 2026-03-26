@@ -55,7 +55,12 @@ export class Building extends Phaser.Physics.Arcade.Sprite {
     );
 
     // Render above terrain but below commander
-    this.setDepth(5);
+    // Bridges sit just above water (depth 0) but below entities (depth 5+)
+    if (this.buildingType === 'bridge') {
+      this.setDepth(2);
+    } else {
+      this.setDepth(5);
+    }
 
     // While constructing, show translucent
     if (this.isConstructing) {

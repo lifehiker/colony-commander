@@ -984,6 +984,7 @@ function generateBuildingSprites(scene: Phaser.Scene): void {
   generateSolarPlant(scene);
   generateTurretSprite(scene);
   generateWallSprite(scene);
+  generateBridgeSprite(scene);
   generateMarineSprite(scene);
   generateBuildingPreview(scene);
 }
@@ -1324,6 +1325,61 @@ function generateWallSprite(scene: Phaser.Scene): void {
   g.fillRect(0, 31, 32, 1);
 
   finish(g, 'building-wall', s, s);
+}
+
+/** Bridge: 32x32 wooden plank over water */
+function generateBridgeSprite(scene: Phaser.Scene): void {
+  const g = gfx(scene);
+  const s = 32;
+
+  // Water tint at edges (slightly transparent blue)
+  g.fillStyle(0x2288cc, 0.35);
+  g.fillRect(0, 0, s, s);
+
+  // Wooden planks (horizontal)
+  g.fillStyle(0x8b6b3e);
+  g.fillRect(2, 2, 28, 5);
+  g.fillRect(2, 9, 28, 5);
+  g.fillRect(2, 16, 28, 5);
+  g.fillRect(2, 23, 28, 5);
+
+  // Plank highlights (lighter wood grain)
+  g.fillStyle(0xa08050);
+  g.fillRect(4, 3, 10, 2);
+  g.fillRect(18, 3, 8, 2);
+  g.fillRect(6, 10, 12, 2);
+  g.fillRect(4, 17, 8, 2);
+  g.fillRect(16, 17, 10, 2);
+  g.fillRect(8, 24, 14, 2);
+
+  // Plank gaps (darker lines between planks)
+  g.fillStyle(0x4a3520);
+  g.fillRect(2, 7, 28, 1);
+  g.fillRect(2, 14, 28, 1);
+  g.fillRect(2, 21, 28, 1);
+
+  // Side rails / edge borders (darker wood)
+  g.fillStyle(0x5a4020);
+  g.fillRect(0, 0, 2, 32);
+  g.fillRect(30, 0, 2, 32);
+
+  // Rail highlights
+  g.fillStyle(0x6b4c2e);
+  g.fillRect(0, 4, 2, 3);
+  g.fillRect(0, 14, 2, 3);
+  g.fillRect(0, 24, 2, 3);
+  g.fillRect(30, 4, 2, 3);
+  g.fillRect(30, 14, 2, 3);
+  g.fillRect(30, 24, 2, 3);
+
+  // Water peek-through at corners (blue tint)
+  g.fillStyle(0x2288cc, 0.5);
+  g.fillRect(0, 0, 2, 2);
+  g.fillRect(30, 0, 2, 2);
+  g.fillRect(0, 30, 2, 2);
+  g.fillRect(30, 30, 2, 2);
+
+  finish(g, 'building-bridge', s, s);
 }
 
 /** Marine: 24x24 small green soldier (top-down) */

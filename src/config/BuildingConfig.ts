@@ -77,6 +77,16 @@ export const BUILDINGS: Record<string, BuildingDef> = {
     maxHealth: 200,
     description: 'Physical barrier. Blocks movement.',
   },
+  bridge: {
+    name: 'Bridge',
+    key: 'building-bridge',
+    width: 1,
+    height: 1,
+    cost: { ore: 20, energy: 5 },
+    buildTime: 5,
+    maxHealth: 100,
+    description: 'Build over water to create a walkable path.',
+  },
 };
 
 // ── Unit Definitions ─────────────────────────────────────────────

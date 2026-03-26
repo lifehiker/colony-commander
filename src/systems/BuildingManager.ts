@@ -13,6 +13,7 @@ const BUILD_MENU_ORDER = [
   'solar_plant',
   'turret',
   'wall',
+  'bridge',
   'command_center',
 ] as const;
 
@@ -73,7 +74,7 @@ export class BuildingManager {
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyEsc = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
-    // Number keys 1–6 for building selection while in build mode
+    // Number keys 1–7 for building selection while in build mode
     const codes = [
       Phaser.Input.Keyboard.KeyCodes.ONE,
       Phaser.Input.Keyboard.KeyCodes.TWO,
@@ -81,6 +82,7 @@ export class BuildingManager {
       Phaser.Input.Keyboard.KeyCodes.FOUR,
       Phaser.Input.Keyboard.KeyCodes.FIVE,
       Phaser.Input.Keyboard.KeyCodes.SIX,
+      Phaser.Input.Keyboard.KeyCodes.SEVEN,
     ];
     for (const code of codes) {
       this.numKeys.push(kb.addKey(code));
@@ -151,18 +153,27 @@ export class BuildingManager {
   // ── Placement Validation ───────────────────────────────────────
 
   isValidPlacement(tileX: number, tileY: number, width: number, height: number): boolean {
+    const isBridge = this.selectedBuilding === 'bridge';
+
     for (let dy = 0; dy < height; dy++) {
       for (let dx = 0; dx < width; dx++) {
         const tx = tileX + dx;
         const ty = tileY + dy;
 
-        // Check terrain — only allow placement on grass or dirt
         const worldPx = tx * TILE_SIZE + TILE_SIZE * 0.5;
         const worldPy = ty * TILE_SIZE + TILE_SIZE * 0.5;
         const tileType = this.worldGenerator.getTileAt(worldPx, worldPy);
 
-        if (tileType !== 'grass' && tileType !== 'dirt') {
-          return false;
+        if (isBridge) {
+          // Bridges can ONLY be placed on water
+          if (tileType !== 'water') {
+            return false;
+          }
+        } else {
+          // All other buildings — only allow placement on grass or dirt
+          if (tileType !== 'grass' && tileType !== 'dirt') {
+            return false;
+          }
         }
 
         // Check overlap with existing buildings
@@ -203,7 +214,20 @@ export class BuildingManager {
   placeBuilding(worldX: number, worldY: number): Building | null {
     if (!this.selectedBuilding) return null;
 
-    const def = BUILDINGS[this.selectedBuilding];
+    const type = this.selectedBuilding;
+
+    // Require a completed Command Center to build (except for CC itself)
+    if (type !== 'command_center') {
+      const hasCC = this.buildings.some(
+        b => b.buildingType === 'command_center' && !b.isConstructing && b.active,
+      );
+      if (!hasCC) {
+        this.scene.events.emit('build-failed', 'Need a Command Center first!');
+        return null;
+      }
+    }
+
+    const def = BUILDINGS[type];
     const { snappedX, snappedY, tileX, tileY } = this.snapToGrid(worldX, worldY, def.width, def.height);
 
     if (!this.isValidPlacement(tileX, tileY, def.width, def.height)) return null;
@@ -211,12 +235,12 @@ export class BuildingManager {
 
     let building: Building;
 
-    if (this.selectedBuilding === 'turret') {
+    if (type === 'turret') {
       const turret = new Turret(this.scene, snappedX, snappedY);
       turret.setBulletGroup(this.turretBullets);
       building = turret;
     } else {
-      building = new Building(this.scene, snappedX, snappedY, this.selectedBuilding);
+      building = new Building(this.scene, snappedX, snappedY, type);
     }
 
     this.buildings.push(building);
@@ -224,6 +248,27 @@ export class BuildingManager {
 
     // Refresh static body
     (building.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+
+    if (type === 'bridge') {
+      // Remove water collision at this position so entities can walk over the bridge
+      const collisionGroup = this.worldGenerator.getCollisionGroup();
+      collisionGroup.getChildren().forEach((obj) => {
+        const sprite = obj as Phaser.GameObjects.Sprite;
+        if (Phaser.Math.Distance.Between(sprite.x, sprite.y, building.x, building.y) < 20) {
+          collisionGroup.remove(sprite);
+          // Don't destroy the sprite — the water texture should still show underneath
+          // Just disable its physics body
+          const body = sprite.body as Phaser.Physics.Arcade.StaticBody;
+          if (body) body.enable = false;
+        }
+      });
+
+      // Bridge itself should NOT block movement (don't add to buildingGroup)
+      // Override: remove it from the building static group that was added above
+      this.buildingGroup.remove(building);
+      const bBody = building.body as Phaser.Physics.Arcade.StaticBody;
+      if (bBody) bBody.enable = false;
+    }
 
     // Recalculate production rates
     this.resourceManager.updateProduction(this.buildings);

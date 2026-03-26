@@ -400,6 +400,11 @@ export class GameScene extends Phaser.Scene {
       // Could change the tile visually in the future
     });
 
+    // Building: failed to place
+    this.events.on('build-failed', (message: string) => {
+      if (this.colonyHUD) this.colonyHUD.showAlert(message);
+    });
+
     // When a friendly unit fires a bullet, wire overlap with enemies
     this.events.on('friendly-bullet-fired', (bullet: Phaser.Physics.Arcade.Sprite) => {
       this.physics.add.overlap(bullet, this.enemySpawner.getEnemies(), (bulletObj, enemyObj) => {
