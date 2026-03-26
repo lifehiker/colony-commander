@@ -15,6 +15,7 @@ import { UnitManager } from '../systems/UnitManager';
 import { TrainingQueue } from '../systems/TrainingQueue';
 import { MiningSystem } from '../systems/MiningSystem';
 import { SoundManager } from '../systems/SoundManager';
+import { ResourceCrateSpawner } from '../systems/ResourceCrateSpawner';
 import { HUD } from '../ui/HUD';
 import { ColonyHUD } from '../ui/ColonyHUD';
 
@@ -40,6 +41,7 @@ export class GameScene extends Phaser.Scene {
   // Phase 3 systems
   miningSystem!: MiningSystem;
   soundManager!: SoundManager;
+  crateSpawner!: ResourceCrateSpawner;
 
   // Loot items on the ground
   lootGroup!: Phaser.Physics.Arcade.Group;
@@ -90,6 +92,7 @@ export class GameScene extends Phaser.Scene {
     this.trainingQueue = new TrainingQueue();
     this.miningSystem = new MiningSystem(this);
     this.soundManager = new SoundManager();
+    this.crateSpawner = new ResourceCrateSpawner(this);
 
     // ── Loot group ───────────────────────────────────────────────
     this.lootGroup = this.physics.add.group({
@@ -174,8 +177,28 @@ export class GameScene extends Phaser.Scene {
       this,
     );
 
-    // Bullets pass through terrain — no bullet vs world collider
-    // (shooting across water/over trees should work)
+    // Player bullets vs solid terrain (trees, rocks — NOT water)
+    const solidGroup = this.world.getSolidGroup();
+    this.physics.add.collider(
+      this.weaponSystem.getBullets(),
+      solidGroup,
+      (bulletObj) => {
+        const bullet = bulletObj as Phaser.Physics.Arcade.Image;
+        bullet.setActive(false).setVisible(false);
+        (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
+      },
+    );
+
+    // Player bullets vs buildings (stop on impact)
+    this.physics.add.collider(
+      this.weaponSystem.getBullets(),
+      buildingGroup,
+      (bulletObj) => {
+        const bullet = bulletObj as Phaser.Physics.Arcade.Image;
+        bullet.setActive(false).setVisible(false);
+        (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
+      },
+    );
 
     // Enemies vs commander (contact damage)
     this.physics.add.overlap(
@@ -217,6 +240,17 @@ export class GameScene extends Phaser.Scene {
       this,
     );
 
+    // Turret bullets vs solid terrain (trees, rocks — NOT water)
+    this.physics.add.collider(
+      this.buildingManager.getTurretBullets(),
+      solidGroup,
+      (bulletObj) => {
+        const bullet = bulletObj as Phaser.Physics.Arcade.Image;
+        bullet.setActive(false).setVisible(false);
+        (bullet.body as Phaser.Physics.Arcade.Body).enable = false;
+      },
+    );
+
     // Enemies vs buildings (deal damage to buildings)
     this.physics.add.overlap(
       this.enemySpawner.getEnemies(),
@@ -224,6 +258,23 @@ export class GameScene extends Phaser.Scene {
       this.onEnemyHitBuilding as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
       undefined,
       this,
+    );
+
+    // Commander vs resource crates
+    this.physics.add.overlap(
+      this.commander,
+      this.crateSpawner.getCrates(),
+      (_commanderObj, crateObj) => {
+        const crate = crateObj as Phaser.Physics.Arcade.Sprite;
+        if (!crate.active) return;
+        const isOre = Math.random() < 0.5;
+        const amount = isOre ? Phaser.Math.Between(30, 60) : Phaser.Math.Between(15, 30);
+        const resource = isOre ? 'ore' : 'energy';
+        this.resourceManager.add(resource, amount);
+        if (this.hud) this.hud.showLootPickup(`+${amount} ${isOre ? 'Ore' : 'Energy'} (crate)`);
+        if (this.soundManager) this.soundManager.playLootPickup();
+        crate.destroy();
+      },
     );
   }
 
@@ -269,6 +320,9 @@ export class GameScene extends Phaser.Scene {
         case 'rifle': this.soundManager.playRifleShot(); break;
         case 'shotgun': this.soundManager.playShotgunBlast(); break;
       }
+      // Alert nearby enemies to gunfire sound
+      const soundRange = weapon === 'shotgun' ? 500 : 400;
+      this.enemySpawner.alertEnemiesToSound(this.commander.x, this.commander.y, soundRange);
     });
 
     // Sound: commander damaged
@@ -658,6 +712,9 @@ export class GameScene extends Phaser.Scene {
     // Training queue
     this.handleTrainingInput();
     this.processTrainingQueue(delta);
+
+    // Resource crate spawner
+    this.crateSpawner.update(time, delta, playerX, playerY);
 
     // ── Crosshair ────────────────────────────────────────────────
     const pointer = this.input.activePointer;

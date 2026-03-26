@@ -129,6 +129,7 @@ export class HUD extends Phaser.Scene {
   private exploredChunks: Set<string> = new Set();
   private lastMinimapChunkX = Number.MIN_SAFE_INTEGER;
   private lastMinimapChunkY = Number.MIN_SAFE_INTEGER;
+  private baseDistText!: Phaser.GameObjects.Text;
 
   // ── Fuel ───────────────────────────────────────────────────
   private fuelContainer!: Phaser.GameObjects.Container;
@@ -299,6 +300,12 @@ export class HUD extends Phaser.Scene {
 
     // Content layer for entities (redrawn on update)
     this.minimapContent = this.add.graphics();
+
+    // Base direction distance text (hidden by default)
+    this.baseDistText = this.add.text(0, 0, '', textStyle(10, '#ffffff', true));
+    this.baseDistText.setOrigin(0.5, 0.5);
+    this.baseDistText.setVisible(false);
+    this.baseDistText.setDepth(20);
   }
 
   // ── Fuel Bar (Below Health, conditional) ───────────────────
@@ -610,6 +617,61 @@ export class HUD extends Phaser.Scene {
     // Glow ring around player
     this.minimapContent.lineStyle(1, 0x00ff44, 0.4);
     this.minimapContent.strokeCircle(mx + half, my + half, 6);
+
+    // ── Base direction indicator ────────────────────────────────
+    const commandCenter = buildings?.find((b) => b.type === 'command_center');
+    if (commandCenter) {
+      const ccRelativeX = (commandCenter.x - playerPos.x) / viewRange * half;
+      const ccRelativeY = (commandCenter.y - playerPos.y) / viewRange * half;
+      const margin = 4;
+      const isOutside =
+        Math.abs(ccRelativeX) > half - margin || Math.abs(ccRelativeY) > half - margin;
+
+      if (isOutside) {
+        // Clamp to minimap edge
+        const clampedX = Phaser.Math.Clamp(ccRelativeX, -(half - margin), half - margin);
+        const clampedY = Phaser.Math.Clamp(ccRelativeY, -(half - margin), half - margin);
+        const edgeX = mx + half + clampedX;
+        const edgeY = my + half + clampedY;
+
+        // Arrow pointing toward base
+        const arrowAngle = Math.atan2(ccRelativeY, ccRelativeX);
+        const arrowSize = 6;
+        const tipX = edgeX + Math.cos(arrowAngle) * arrowSize;
+        const tipY = edgeY + Math.sin(arrowAngle) * arrowSize;
+        const leftX = edgeX + Math.cos(arrowAngle + 2.5) * arrowSize;
+        const leftY = edgeY + Math.sin(arrowAngle + 2.5) * arrowSize;
+        const rightX = edgeX + Math.cos(arrowAngle - 2.5) * arrowSize;
+        const rightY = edgeY + Math.sin(arrowAngle - 2.5) * arrowSize;
+
+        // Pulsing glow
+        const pulse = 0.6 + 0.4 * Math.sin(this.minimapFrame * 0.1);
+        this.minimapContent.fillStyle(0x4488ff, pulse);
+        this.minimapContent.fillCircle(edgeX, edgeY, 5);
+
+        // Arrow triangle
+        this.minimapContent.fillStyle(0x4488ff, 1);
+        this.minimapContent.fillTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
+
+        // Distance text
+        const dist = Math.sqrt(
+          (commandCenter.x - playerPos.x) ** 2 + (commandCenter.y - playerPos.y) ** 2,
+        );
+        const distLabel =
+          dist >= 1000 ? `Base: ${(dist / 1000).toFixed(1)}k` : `Base: ${Math.round(dist)}`;
+
+        // Position text slightly inward from the arrow
+        const textOffsetX = -Math.cos(arrowAngle) * 14;
+        const textOffsetY = -Math.sin(arrowAngle) * 14;
+        this.baseDistText.setPosition(edgeX + textOffsetX, edgeY + textOffsetY);
+        this.baseDistText.setText(distLabel);
+        this.baseDistText.setVisible(true);
+      } else {
+        this.baseDistText.setVisible(false);
+      }
+    } else {
+      this.baseDistText.setVisible(false);
+    }
   }
 
   /**

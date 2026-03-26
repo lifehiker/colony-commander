@@ -70,6 +70,15 @@ export class EnemySpawner {
     return enemy;
   }
 
+  alertEnemiesToSound(sourceX: number, sourceY: number, soundRange: number = 400): void {
+    this.enemies.getChildren().forEach((child) => {
+      const enemy = child as Enemy;
+      if (enemy.active) {
+        enemy.alertToSound(sourceX, sourceY, soundRange);
+      }
+    });
+  }
+
   cleanup(): void {
     const toRemove: Enemy[] = [];
     this.enemies.getChildren().forEach((child) => {

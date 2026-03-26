@@ -183,6 +183,9 @@ export class WorldGenerator {
   /** Static group for all collidable tiles (shared across chunks) */
   private collisionGroup: Phaser.Physics.Arcade.StaticGroup;
 
+  /** Static group for solid blocking tiles only (rocks, trees — NOT water). Used for bullet collision. */
+  private solidGroup: Phaser.Physics.Arcade.StaticGroup;
+
   /** Cached ore positions discovered so far */
   private orePositions: { x: number; y: number }[] = [];
 
@@ -206,6 +209,7 @@ export class WorldGenerator {
     this.riverNoise = new SimplexNoise(this.seed + 90210);
 
     this.collisionGroup = this.scene.physics.add.staticGroup();
+    this.solidGroup = this.scene.physics.add.staticGroup();
   }
 
   // ── Public API ────────────────────────────────────────────────
@@ -270,6 +274,11 @@ export class WorldGenerator {
     return this.collisionGroup;
   }
 
+  /** Returns the solid-only group (rocks, trees — no water) for bullet collision. */
+  getSolidGroup(): Phaser.Physics.Arcade.StaticGroup {
+    return this.solidGroup;
+  }
+
   /**
    * Returns the tile type at an arbitrary world-pixel position.
    * Works even if the chunk hasn't been loaded (generates on the fly).
@@ -325,6 +334,10 @@ export class WorldGenerator {
         // Collision registration
         if (COLLIDABLE_TILES.has(tileType)) {
           this.collisionGroup.add(sprite);
+          // Also add solid tiles (not water) to a separate group for bullet collision
+          if (tileType !== TileType.WATER) {
+            this.solidGroup.add(sprite);
+          }
           const body = sprite.body as Phaser.Physics.Arcade.StaticBody;
           body.setSize(TILE_SIZE, TILE_SIZE);
           body.updateFromGameObject();
@@ -392,7 +405,7 @@ export class WorldGenerator {
 
     if (n < -0.3) return TileType.WATER;
     if (n < -0.1) return TileType.DIRT;
-    if (n > 0.7) return TileType.ORE;
+    if (n > 0.6) return TileType.ORE;
     if (n > 0.5) return TileType.ROCK;
 
     // Grass — but maybe a tree?

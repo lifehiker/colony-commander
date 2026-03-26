@@ -21,6 +21,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private hasBeenDamaged: boolean = false;
   private isDying: boolean = false;
 
+  // Obstacle avoidance
+  private stuckTimer: number = 0;
+  private stuckThreshold: number = 300; // ms of being stuck before trying alternate path
+  private avoidanceAngle: number = 0; // current avoidance offset
+  private isAvoiding: boolean = false;
+  private avoidanceTimer: number = 0;
+  private avoidanceDuration: number = 500; // ms to maintain avoidance direction
+
   constructor(scene: Phaser.Scene, x: number, y: number, type: string) {
     // Determine texture key based on enemy type
     const textureKey = `enemy-${type}`;
@@ -162,7 +170,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   private handlePatrol(
-    _delta: number,
+    delta: number,
     distToPlayer: number,
     playerX: number,
     playerY: number,
@@ -188,6 +196,22 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
+    // Check if stuck during patrol
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
+    if (currentSpeed < 3) {
+      this.stuckTimer += delta;
+      if (this.stuckTimer > 500) {
+        // Pick a new patrol target — current one is blocked
+        this.patrolTarget = null;
+        this.stuckTimer = 0;
+        this.transitionTo('idle');
+        return;
+      }
+    } else {
+      this.stuckTimer = 0;
+    }
+
     // Move toward patrol target
     this.scene.physics.moveToObject(this, this.patrolTarget, this.speed * 0.5);
 
@@ -206,7 +230,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   private handleChase(
-    _delta: number,
+    delta: number,
     distToPlayer: number,
     playerX: number,
     playerY: number,
@@ -225,11 +249,46 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
-    // Move toward player
-    this.scene.physics.moveTo(this, playerX, playerY, this.speed);
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
+    const directAngle = Math.atan2(playerY - this.y, playerX - this.x);
 
-    // Face player
-    this.rotation = Phaser.Math.Angle.Between(this.x, this.y, playerX, playerY);
+    if (this.isAvoiding) {
+      // Continue avoidance movement
+      this.avoidanceTimer -= delta;
+      if (this.avoidanceTimer <= 0) {
+        this.isAvoiding = false;
+        this.stuckTimer = 0;
+      } else {
+        const avoidAngle = directAngle + this.avoidanceAngle;
+        body.setVelocity(
+          Math.cos(avoidAngle) * this.speed,
+          Math.sin(avoidAngle) * this.speed,
+        );
+        this.rotation = avoidAngle;
+        return;
+      }
+    }
+
+    // Check if stuck (trying to move but velocity is very low)
+    if (currentSpeed < 5 && this.state === 'chase') {
+      this.stuckTimer += delta;
+      if (this.stuckTimer > this.stuckThreshold) {
+        // Start avoidance — try perpendicular direction
+        this.isAvoiding = true;
+        this.avoidanceTimer = this.avoidanceDuration;
+        // Alternate between +90 and -90 degrees
+        this.avoidanceAngle = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+        this.stuckTimer = 0;
+        return;
+      }
+    } else {
+      this.stuckTimer = 0;
+    }
+
+    // Direct movement toward player
+    this.scene.physics.moveTo(this, playerX, playerY, this.speed);
+    this.rotation = directAngle;
   }
 
   private handleAttack(
@@ -325,6 +384,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private transitionTo(newState: EnemyState): void {
     this.state = newState;
     this.patrolTarget = null;
+    this.isAvoiding = false;
+    this.stuckTimer = 0;
+    this.avoidanceTimer = 0;
 
     switch (newState) {
       case 'idle':
@@ -339,6 +401,17 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         break;
       case 'dead':
         break;
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Sound attraction
+  // -------------------------------------------------------------------
+  alertToSound(sourceX: number, sourceY: number, soundRange: number = 400): void {
+    if (this.state === 'dead' || this.isDying) return;
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, sourceX, sourceY);
+    if (dist <= soundRange && this.state !== 'chase' && this.state !== 'attack') {
+      this.transitionTo('chase');
     }
   }
 
@@ -400,7 +473,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Loot
   // -------------------------------------------------------------------
   dropLoot(): { type: string; x: number; y: number }[] {
-    const lootCount = Phaser.Math.Between(1, 3);
+    const lootCount = Phaser.Math.Between(2, 4);
     const lootTypes = ['ammo', 'health_pack', 'weapon_upgrade', 'building_material', 'rare_mineral'];
     const lootSpriteMap: Record<string, string> = {
       ammo: 'loot-ammo',
@@ -416,13 +489,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       // Weighted drop — rarer items have lower chance
       let roll = Math.random();
       let type: string;
-      if (roll < 0.35) {
+      if (roll < 0.30) {
         type = 'ammo';
-      } else if (roll < 0.60) {
+      } else if (roll < 0.55) {
         type = 'health_pack';
       } else if (roll < 0.80) {
         type = 'building_material';
-      } else if (roll < 0.95) {
+      } else if (roll < 0.90) {
         type = 'weapon_upgrade';
       } else {
         type = 'rare_mineral';
