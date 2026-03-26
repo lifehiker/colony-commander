@@ -285,12 +285,58 @@ export class BuildingManager {
     const def = BUILDINGS['command_center'];
     const { snappedX, snappedY } = this.snapToGrid(worldX, worldY, def.width, def.height);
 
+    // Validate all tiles under the CC are walkable ground
+    const halfW = (def.width * TILE_SIZE) / 2;
+    const halfH = (def.height * TILE_SIZE) / 2;
+    for (let dx = -halfW; dx <= halfW; dx += TILE_SIZE) {
+      for (let dy = -halfH; dy <= halfH; dy += TILE_SIZE) {
+        const tile = this.worldGenerator.getTileAt(snappedX + dx, snappedY + dy);
+        if (tile !== 'grass' && tile !== 'dirt') {
+          // Try nudging the position to find valid ground
+          return this.placeCommandCenterSafe(worldX, worldY);
+        }
+      }
+    }
+
     const building = new Building(this.scene, snappedX, snappedY, 'command_center');
     this.buildings.push(building);
     this.buildingGroup.add(building);
     (building.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
 
     return building;
+  }
+
+  /** Try nearby positions to find valid ground for CC placement */
+  private placeCommandCenterSafe(worldX: number, worldY: number): Building | null {
+    const def = BUILDINGS['command_center'];
+    const halfW = (def.width * TILE_SIZE) / 2;
+    const halfH = (def.height * TILE_SIZE) / 2;
+
+    for (let r = TILE_SIZE; r < 400; r += TILE_SIZE) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+        const cx = worldX + Math.cos(a) * r;
+        const cy = worldY + Math.sin(a) * r;
+        const { snappedX, snappedY } = this.snapToGrid(cx, cy, def.width, def.height);
+
+        let valid = true;
+        for (let dx = -halfW; dx <= halfW; dx += TILE_SIZE) {
+          for (let dy = -halfH; dy <= halfH; dy += TILE_SIZE) {
+            const tile = this.worldGenerator.getTileAt(snappedX + dx, snappedY + dy);
+            if (tile !== 'grass' && tile !== 'dirt') { valid = false; break; }
+          }
+          if (!valid) break;
+        }
+
+        if (valid) {
+          const building = new Building(this.scene, snappedX, snappedY, 'command_center');
+          this.buildings.push(building);
+          this.buildingGroup.add(building);
+          (building.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+          return building;
+        }
+      }
+    }
+    return null;
   }
 
   // ── Update Loop ────────────────────────────────────────────────

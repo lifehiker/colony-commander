@@ -74,22 +74,31 @@ export class GameScene extends Phaser.Scene {
     this.weaponSystem = new WeaponSystem(this);
 
     // ── Find valid spawn point on grass/dirt ───────────────────────
+    // Must verify a large area is clear (for CC which is 3x3 tiles = 96x96px)
     let spawnX = SPAWN_X;
     let spawnY = SPAWN_Y;
-    for (let r = 0; r < 500; r += 32) {
-      let found = false;
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+    const isAreaClear = (cx: number, cy: number, size: number): boolean => {
+      for (let dx = -size; dx <= size; dx += TILE_SIZE) {
+        for (let dy = -size; dy <= size; dy += TILE_SIZE) {
+          const tile = this.world.getTileAt(cx + dx, cy + dy);
+          if (tile !== 'grass' && tile !== 'dirt') return false;
+        }
+      }
+      return true;
+    };
+    let spawnFound = false;
+    for (let r = 0; r < 800; r += 32) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
         const tx = SPAWN_X + Math.cos(a) * r;
         const ty = SPAWN_Y + Math.sin(a) * r;
-        const tile = this.world.getTileAt(tx, ty);
-        if (tile === 'grass' || tile === 'dirt') {
+        if (isAreaClear(tx, ty, 64)) { // 64px radius = covers CC + some buffer
           spawnX = tx;
           spawnY = ty;
-          found = true;
+          spawnFound = true;
           break;
         }
       }
-      if (found) break;
+      if (spawnFound) break;
     }
 
     // ── Commander (player) ───────────────────────────────────────
