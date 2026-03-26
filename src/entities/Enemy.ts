@@ -21,13 +21,15 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private hasBeenDamaged: boolean = false;
   private isDying: boolean = false;
 
-  // Obstacle avoidance
+  // Obstacle avoidance — wall-following with escalation
   private stuckTimer: number = 0;
-  private stuckThreshold: number = 300; // ms of being stuck before trying alternate path
-  private avoidanceAngle: number = 0; // current avoidance offset
+  private stuckThreshold: number = 250;
+  private avoidanceAngle: number = 0;
   private isAvoiding: boolean = false;
   private avoidanceTimer: number = 0;
-  private avoidanceDuration: number = 500; // ms to maintain avoidance direction
+  private avoidanceDuration: number = 800; // longer avoidance moves
+  private avoidanceDirection: number = 1; // 1 or -1, consistent wall-following side
+  private consecutiveStucks: number = 0; // escalation counter
 
   constructor(scene: Phaser.Scene, x: number, y: number, type: string) {
     // Determine texture key based on enemy type
@@ -62,6 +64,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.detectionRange = config.detectionRange;
     this.state = 'idle';
     this.stateTimer = Phaser.Math.Between(2000, 4000);
+    // Randomize initial avoidance direction so enemies don't all go the same way
+    this.avoidanceDirection = Math.random() < 0.5 ? 1 : -1;
 
     // XP reward scales with difficulty
     this.xpReward = type === 'brute' ? 50 : type === 'spitter' ? 30 : 15;
@@ -254,36 +258,66 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const directAngle = Math.atan2(playerY - this.y, playerX - this.x);
 
     if (this.isAvoiding) {
-      // Continue avoidance movement
       this.avoidanceTimer -= delta;
-      if (this.avoidanceTimer <= 0) {
-        this.isAvoiding = false;
-        this.stuckTimer = 0;
+
+      // Check if we got unstuck during avoidance (speed recovered)
+      if (currentSpeed > this.speed * 0.3) {
+        // Making progress — keep going but try angling back toward player
+        const blendFactor = Math.min(this.avoidanceTimer / this.avoidanceDuration, 1);
+        const blendedAngle = directAngle + this.avoidanceAngle * blendFactor * 0.7;
+        body.setVelocity(
+          Math.cos(blendedAngle) * this.speed,
+          Math.sin(blendedAngle) * this.speed,
+        );
+        this.rotation = blendedAngle;
       } else {
+        // Still stuck — maintain full avoidance angle
         const avoidAngle = directAngle + this.avoidanceAngle;
         body.setVelocity(
           Math.cos(avoidAngle) * this.speed,
           Math.sin(avoidAngle) * this.speed,
         );
         this.rotation = avoidAngle;
-        return;
       }
+
+      if (this.avoidanceTimer <= 0) {
+        this.isAvoiding = false;
+        this.stuckTimer = 0;
+      }
+      return;
     }
 
     // Check if stuck (trying to move but velocity is very low)
     if (currentSpeed < 5 && this.state === 'chase') {
       this.stuckTimer += delta;
       if (this.stuckTimer > this.stuckThreshold) {
-        // Start avoidance — try perpendicular direction
+        this.consecutiveStucks++;
         this.isAvoiding = true;
+
+        // Escalating avoidance: wider angles and longer duration the more times stuck
+        // First stuck: 90°, second: 120°, third: 150°, etc.
+        const angleEscalation = Math.min(Math.PI * 0.5 + this.consecutiveStucks * (Math.PI / 6), Math.PI * 0.85);
+        this.avoidanceAngle = this.avoidanceDirection * angleEscalation;
+
+        // Longer avoidance each time (800ms, 1200ms, 1600ms, capped at 2000ms)
+        this.avoidanceDuration = Math.min(800 + this.consecutiveStucks * 400, 2000);
         this.avoidanceTimer = this.avoidanceDuration;
-        // Alternate between +90 and -90 degrees
-        this.avoidanceAngle = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+
+        // After 3 consecutive stucks on same side, try the other side
+        if (this.consecutiveStucks >= 3) {
+          this.avoidanceDirection *= -1;
+          this.consecutiveStucks = 0;
+        }
+
         this.stuckTimer = 0;
         return;
       }
     } else {
       this.stuckTimer = 0;
+      // Reset escalation when making progress
+      if (currentSpeed > this.speed * 0.5) {
+        this.consecutiveStucks = 0;
+      }
     }
 
     // Direct movement toward player
@@ -387,6 +421,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.isAvoiding = false;
     this.stuckTimer = 0;
     this.avoidanceTimer = 0;
+    this.consecutiveStucks = 0;
 
     switch (newState) {
       case 'idle':
